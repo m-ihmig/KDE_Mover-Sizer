@@ -1,25 +1,35 @@
-;	Internationally known as "KDE Mover-Sizer"                               Version 2.9
+;   Internationally known as "KDE Mover-Sizer"                               Version 2.11
 ;
-;	http://corz.org/windows/software/accessories/KDE-resizing-moving-for-Windows.php
+;   http://corz.org/windows/software/accessories/KDE-resizing-moving-for-Windows.php
 
-;	Which is essentially..
+;   Which is essentially..
 
-;	Easy Window Dragging -- KDE style (requires XP/2k/NT) -- by Jonny
-;	..with nobs on. See http://www.autohotkey.com and their forum.
+;   Easy Window Dragging -- KDE style (requires XP/2k/NT) -- by Jonny
+;   ..with nobs on. See http://www.autohotkey.com and their forum.
 ;
-;	This script makes it much easier to move or resize a window: 1) Hold down
-;	the ALT key and LEFT-click anywhere inside a window to drag it to a new
-;	location;	2) Hold down ALT and RIGHT-click-drag anywhere inside a window
-;	to easily resize it; 3) Press ALT twice, but before releasing it the second
-;	time, left-click to minimize the window under the mouse cursor, right-click
-;	to maximize it, or middle-click to close it.
+;   This script makes it much easier to move or resize a window:
+;   1) Hold down the ALT key and LEFT-click anywhere inside a window to drag it to a new location;
+;   2) Hold down ALT and RIGHT-click-drag anywhere inside a window to easily resize it
+;   3) Press ALT twice, but before releasing it the second time,
+;      left-click to minimize the window under the mouse cursor,
+;      right-click to maximize it, or middle-click to close it.
 ;
-;	This script was inspired by and built on many like it in the forum. Thanks 
-;	go out to ck, thinkstorm, Chris, and aurelian for a job well done.
+;   This script was inspired by and built on many like it in the forum. Thanks 
+;   go out to ck, thinkstorm, Chris, and aurelian for a job well done.
 
+; Known Bugs:
+; - MButton Scrolling: sometimes, they "Key Up" event is lost, even to GetKeyState, resulting in "hanging" scroll mode. Click MButton again to get out of it
+; 
 
-;	Itstory:
-;   Sep  10, 2014:		Added option to hide tray icon - a message will appear first, warning you that you have no easy way to shutdown KMS
+;   Itstory:
+;   Feb  27, 2025:      Added: DPI-aware Borderless snapping (consider extended invisible frame border around a window) during Snap-to-Border or QuickPosition-to-grid
+;                       Added: Run as administrator
+;                       Added: Create and remove shortcut link in startup folder
+;                       Added: optional match class name in IgnoreWindow list (e.g. ignore move/resize when Alt+clicking on Desktop)
+;                       Fixed: Allow click with active Alt+Tab task switcher for Win10 and Win11
+;                       Fixed: Make script work for apps from Windows' apps framework that don't have a processname (e.g Calculator)
+;   Sep  10, 2014:      Added option to hide tray icon - a message will appear first, warning you that you have no easy way to shutdown KMS
+;   Jan  20, 2014:      Added: (Focusless) scroll when holding middle mouse button (e.g. for pointing sticks). Don't move to generate middle click
 ;   Aug  10, 2013:      Added: Option to use 3x3 grid for resizing as to lock resizing horizontally or vertically depending on mouse position
 ;                       Fixed: Resizing wrong window after resizing a restored maximized window
 ;   July 28, 2013:      Moved options into "Options" submenu and merged with "Resize Options"
@@ -58,74 +68,79 @@
 ;                       Added configurable hotkeys (based on jlr's version)
 ;   May 17, 2011:       Added "Ignore Window" list to pass-through hotkeys (e.g. for Remote Desktop or Adobe Photoshop) (mih)
 ;   October 31, 2009:   Added special feature "Always On Top". Click with the cross cursor on a window you want to toggle AlwaysOnTop (mih)
-;   October 12, 2009:	V3 icon! (the last one produced even more mails!). This one rocks. No complaints please!
-;						You can now get straight to the KDE Mover-Sizer page from the About dialog.
-;						Removed superfluous default AutoHotKey tray menu items.
-;						Added an "Enable HotKeys" tray menu item, which toggles the HotKeys (it un/checks) 
-;						Added an Exit menu item and simple exit function.
-;						Added a menu option to get to the ini file, to hack at the things there's no menu item for.
-;						All current prefs get written to the ini file so the user can see/set what's available.
-;						Cleaned up documentation and web page, some. More to come. Maybe even comments!
-;						Added about box text, some default prefs, tray, gui + menu fixes, other minor stuff.	~ Cor
-;   October 10, 2009:	Added new algorithm for Snapping on Resize (mih)
-;						Added option for Restoring Window on Resize
-;   October 4, 2009:	Added full support for multi screens (incl. snapping) (mih)
-;						Fixed Snapping on WorkArea (excluding task bar)
-;						Added INI option for Snapping Distance and WinDelay
-;						Added About box
-;   October 3, 2009:	Added configuration file and option to enable&disable snapping (mih)
-;						Added snapping for (Alt-Left-Click) Moving Windows
-;   June 16, 2009:		Added Vista Alt-Tab fix (by jordoex)
-;						Added an information tip for the tray hover. Updated Icon (I noticed it 
-;						clashed with a portable Linux I recently tried, so I created an original 
-;						icon for KDE Mover-Sizer. ~ Cor
-;   March    10, 2009:	Moving a maximized windows is now possible (First WinRestore to orig. size, then move)
-;						Added: Alt+Middle Button maximizes/restores a window (mih)
-;   December 04, 2007:	Window snap-to-edge - just like KDE, but with extra fun!
-;						Added Tray ToolTip help. ~ Cor
-;   November 07, 2006:	Optimized resizing code in !RButton, courtesy of bluedawn.
-;   February 05, 2006:	Fixed double-alt (the ~Alt hotkey) to work with latest versions of AHK.
+;   October 12, 2009:   V3 icon! (the last one produced even more mails!). This one rocks. No complaints please!
+;                       You can now get straight to the KDE Mover-Sizer page from the About dialog.
+;                       Removed superfluous default AutoHotKey tray menu items.
+;                       Added an "Enable HotKeys" tray menu item, which toggles the HotKeys (it un/checks) 
+;                       Added an Exit menu item and simple exit function.
+;                       Added a menu option to get to the ini file, to hack at the things there's no menu item for.
+;                       All current prefs get written to the ini file so the user can see/set what's available.
+;                       Cleaned up documentation and web page, some. More to come. Maybe even comments!
+;                       Added about box text, some default prefs, tray, gui + menu fixes, other minor stuff.    ~ Cor
+;   October 10, 2009:   Added new algorithm for Snapping on Resize (mih)
+;                       Added option for Restoring Window on Resize
+;   October 4, 2009:    Added full support for multi screens (incl. snapping) (mih)
+;                       Fixed Snapping on WorkArea (excluding task bar)
+;                       Added INI option for Snapping Distance and WinDelay
+;                       Added About box
+;   October 3, 2009:    Added configuration file and option to enable&disable snapping (mih)
+;                       Added snapping for (Alt-Left-Click) Moving Windows
+;   June 16, 2009:      Added Vista Alt-Tab fix (by jordoex)
+;                       Added an information tip for the tray hover. Updated Icon (I noticed it 
+;                       clashed with a portable Linux I recently tried, so I created an original 
+;                       icon for KDE Mover-Sizer. ~ Cor
+;   March    10, 2009:  Moving a maximized windows is now possible (First WinRestore to orig. size, then move)
+;                       Added: Alt+Middle Button maximizes/restores a window (mih)
+;   December 04, 2007:  Window snap-to-edge - just like KDE, but with extra fun!
+;                       Added Tray ToolTip help. ~ Cor
+;   November 07, 2006:  Optimized resizing code in !RButton, courtesy of bluedawn.
+;   February 05, 2006:  Fixed double-alt (the ~Alt hotkey) to work with latest versions of AHK.
 
 
-;	Snap-To Edges ..
+;   Snap-To Edges ..
 ;
-;	If their edge comes within ten pixels of your desktop edge, the window snaps to it. 
-;	Very neat;	it's what KDE does. But there's more..
+;   If their edge comes within ten pixels of your desktop edge, the window snaps to it. 
+;   Very neat;  it's what KDE does. But there's more..
 ;
-;	If you keep mousing after the window snaps, you get a beautiful resizing control which
-;	keeps on going. Also you can Alt-right-click any oversized windows and pop them straight back 
-;	into the desktop. Note: If you are quick enough, you can break the snap when needed. 
-;	Have fun! NOTE: You can now disable the right-click-to-snap behaviour, if preferred.
+;   If you keep mousing after the window snaps, you get a beautiful resizing control which
+;   keeps on going. Also you can Alt-right-click any oversized windows and pop them straight back 
+;   into the desktop. Note: If you are quick enough, you can break the snap when needed. 
+;   Have fun! NOTE: You can now disable the right-click-to-snap behaviour, if preferred.
 ;
-;	;o) Cor
+;   ;o) Cor
 ;
-;	June 16, 2009:
+;   June 16, 2009:
 ;
-;		Since giving this a page of its own, it's become insanely popular, 
-;		and keeps finding its way onto those "five wee apps you can't live
-;		without" type lists, which says a lot for the kind of software you
-;		can have for yourself if you only rake about in the AutoIt and 
-;		AutoHotKey forums once in a while.
+;       Since giving this a page of its own, it's become insanely popular, 
+;       and keeps finding its way onto those "five wee apps you can't live
+;       without" type lists, which says a lot for the kind of software you
+;       can have for yourself if you only rake about in the AutoIt and 
+;       AutoHotKey forums once in a while.
 
 ;
-;	NOTE: If your application wants the Alt key for hotkey modifiers, use Alt+Win+Key for that.
-;	It's quite easy once you do it a few times, simply roll your thumb and finger on and off.
+;   NOTE: If your application wants the Alt key for hotkey modifiers, use Alt+Win+Key for that.
+;   It's quite easy once you do it a few times, simply roll your thumb and finger on and off.
 
-
-If (A_AhkVersion < "1.0.39.00")
+MinVersion := "1.1.20.00"
+If (A_AhkVersion < MinVersion)
 {
-    MsgBox, 0x30,,This script may not work properly with your version of AutoHotkey. Continue?
+    MsgBox, 0x34,,This script may not work properly with your version of AutoHotkey. Minimum AHK Version: %MinVersion%. Continue?
     IfMsgBox, No
-      ExitApp
+        ExitApp
 }
 
-;if not A_IsAdmin
-;{
-;    ; TODO: Check if windows version is Win8
-;    MsgBox, 0x30,,% "Note: KDE_Mover-Size is not run as administrator. It may not work on all Windows. Try: `r`n"
-;                  . "runas.exe /savecred /user:administrator """ . %A_ScriptFullPath%
-;}
-; TODO: Add Menu command to create/delete a KDEMoverSize_as_admin.lnk in Startmenu/Autostart
+DefaultEnableFocuslessScroll := 0
+DefaultBorderlessSnapping    := 0
+
+If (SubStr(A_OSVersion,1,3) != "WIN")
+{
+    ; For >= Win10
+    If (A_OSVersion >= "10.0.14393")        ; for Windows 10 build 14393, aka version 1607 and greater
+        DefaultBorderlessSnapping := 1
+} else {
+    ; For legacy Windows versions (< Win10)
+    DefaultEnableFocuslessScroll := 1
+}
 
 ;***********************
 ; Read INI file
@@ -134,7 +149,9 @@ If (A_AhkVersion < "1.0.39.00")
     IniWrite, %SnapOnSizeEnabled%,      KDE_Mover-Sizer.ini, Settings, SnapOnSizeEnabled
     IniRead,   SnapOnMoveEnabled,       KDE_Mover-Sizer.ini, Settings, SnapOnMoveEnabled, 1          ; default: true
     IniWrite, %SnapOnMoveEnabled%,      KDE_Mover-Sizer.ini, Settings, SnapOnMoveEnabled
-    IniRead,   SnapOnResizeMagnetic,    KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic, 1       ; default: true
+    IniRead,   BorderlessSnapping,      KDE_Mover-Sizer.ini, Settings, BorderlessSnapping, %DefaultBorderlessSnapping%
+    IniWrite, %BorderlessSnapping%,     KDE_Mover-Sizer.ini, Settings, BorderlessSnapping
+    IniRead,   SnapOnResizeMagnetic,    KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic, 0       ; default: false
     IniWrite, %SnapOnResizeMagnetic%,   KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic
     IniRead,   DoRestoreOnResize,       KDE_Mover-Sizer.ini, Settings, DoRestoreOnResize,  1         ; default: true
     IniWrite, %DoRestoreOnResize%,      KDE_Mover-Sizer.ini, Settings, DoRestoreOnResize
@@ -155,11 +172,12 @@ If (A_AhkVersion < "1.0.39.00")
 
     IniRead,   DoubleModifierKey_MaxDelay_ms,      KDE_Mover-Sizer.ini, Settings, DoubleModifierKey_MaxDelay_ms, 400
     IniWrite, %DoubleModifierKey_MaxDelay_ms%,     KDE_Mover-Sizer.ini, Settings, DoubleModifierKey_MaxDelay_ms
-    IniRead,   WindowIgnoreList,		KDE_Mover-Sizer.ini, Settings, WindowIgnoreList, mstsc.exe,      ; default: MS Terminal Services Client
-    IniWrite, %WindowIgnoreList%,		KDE_Mover-Sizer.ini, Settings, WindowIgnoreList
-    
-    IniRead,   HideTrayIcon,			KDE_Mover-Sizer.ini, Settings, HideTrayIcon, 0					; default is to show the icon
-    IniWrite, %HideTrayIcon%,			KDE_Mover-Sizer.ini, Settings, HideTrayIcon
+    IniRead,   WindowIgnoreList,        KDE_Mover-Sizer.ini, Settings, WindowIgnoreList, explorer.exe/Progman,mstsc.exe,Citrix.DesktopViewer.App.exe,    ; default exclude: Desktop and Remote Desktop
+    IniWrite, %WindowIgnoreList%,       KDE_Mover-Sizer.ini, Settings, WindowIgnoreList
+    IniRead,   RunAsAdministrator,      KDE_Mover-Sizer.ini, Settings, RunAsAdministrator, 0           ; default: run as normal user
+    IniWrite, %RunAsAdministrator%,     KDE_Mover-Sizer.ini, Settings, RunAsAdministrator
+    IniRead,   HideTrayIcon,            KDE_Mover-Sizer.ini, Settings, HideTrayIcon, 0                 ; default is to show the icon
+    IniWrite, %HideTrayIcon%,           KDE_Mover-Sizer.ini, Settings, HideTrayIcon
 
     ; Settings for hotkeys
     ;
@@ -217,15 +235,22 @@ If (A_AhkVersion < "1.0.39.00")
 
     ; Settings for focusless scrolling
     ;
-    IniRead,   EnableFocuslessScroll,   KDE_Mover-Sizer.ini, Special, EnableFocuslessScroll, 0         ; default: disabled
+    IniRead,   EnableFocuslessScroll,   KDE_Mover-Sizer.ini, Special, EnableFocuslessScroll, %DefaultEnableFocuslessScroll%         ; default: disabled for >=Win10
     IniWrite, %EnableFocuslessScroll%,  KDE_Mover-Sizer.ini, Special, EnableFocuslessScroll
-    IniRead,   FocuslessScrollSpeed,    KDE_Mover-Sizer.ini, Special, FocuslessScrollSpeed, 120        ; default: 120
-    IniWrite, %FocuslessScrollSpeed%,   KDE_Mover-Sizer.ini, Special, FocuslessScrollSpeed
     IniRead,   FocuslessScrollModifier, KDE_Mover-Sizer.ini, Special, FocuslessScrollModifier, -       ; -/empty:none, *:all, ^:Ctrl, +:Shift, ...
     If FocuslessScrollModifier = -
         FocuslessScrollModifier := ""
     IniWrite, %FocuslessScrollModifier%,KDE_Mover-Sizer.ini, Special, FocuslessScrollModifier
 
+    ; Settings for special mouse features (mouse button clicks and scrolling with holding middle button (use with pointing sticks))
+    IniRead,   EnableMButtonScroll,                     KDE_Mover-Sizer.ini, Special, EnableMButtonScroll, 0                         ; default: disabled
+    IniWrite, %EnableMButtonScroll%,                    KDE_Mover-Sizer.ini, Special, EnableMButtonScroll
+    IniRead,   MButtonScrollMinMousespeedForFastAccel,  KDE_Mover-Sizer.ini, Special, MButtonScrollMinMousespeedForFastAccel, 50
+    IniWrite, %MButtonScrollMinMousespeedForFastAccel%, KDE_Mover-Sizer.ini, Special, MButtonScrollMinMousespeedForFastAccel
+    IniRead,   MButtonScrollFastAccelerationMultiplier, KDE_Mover-Sizer.ini, Special, MButtonScrollFastAccelerationMultiplier, 1.7
+    IniWrite, %MButtonScrollFastAccelerationMultiplier%,KDE_Mover-Sizer.ini, Special, MButtonScrollFastAccelerationMultiplier
+    IniRead,   MButtonScrollSpeedDivider,               KDE_Mover-Sizer.ini, Special, MButtonScrollSpeedDivider, 5
+    IniWrite, %MButtonScrollSpeedDivider%,              KDE_Mover-Sizer.ini, Special, MButtonScrollSpeedDivider
 
     ; Mappings and status for key shortcuts to special characters
     ;
@@ -258,6 +283,34 @@ If (A_AhkVersion < "1.0.39.00")
     IniWrite, %AddOnEnable_DrawGrid%,          KDE_Mover-Sizer.ini, AddOns, AddOnEnable_DrawGrid
 
 
+; ***********************************
+; Global settings and variables
+
+#SingleInstance Force
+
+startupLinkFile := A_Startup . "\KDE Mover-Sizer.lnk"
+
+#NoEnv          ; Recommended for performance and compatibility with future AutoHotkey releases. (jlr)
+;SendMode Input  ; Recommended for new scripts due to its superior speed and reliability. (jlr) Makes MButtonScroll fast
+
+SetWinDelay, %WinDelay%
+
+CoordMode, Mouse,Screen
+CoordMode, Pixel,Screen
+CoordMode, ToolTip,Screen
+
+MayToggleMaximizeRestore := true
+
+FocuslessScrollSpeed := 120 ; This is the windows default equivalent for 1 Wheel Up/Down event
+
+#MaxHotkeysPerInterval 200 ; Avoid warning when mouse wheel turned very fast
+
+; for speedup and privacy
+;#KeyHistory 0
+;ListLines Off
+
+; for debugging
+#KeyHistory 300
 
 ;*********************************************
 ; Prepare Menu
@@ -281,9 +334,10 @@ if ( AddOnEnable_ToggleForeground AND ( AddOnEnable_SpecialCharacters OR AddOnEn
 if ( AddOnEnable_SpecialCharacters )
     Menu, MySpecialMenu, add, Enable Hotkeys to insert Special Characters, MenuEnableSpecialCharacters
 
-if ( AddOnEnable_FocuslessScroll )
+if ( AddOnEnable_FocuslessScroll ) {
     Menu, MySpecialMenu, add, Enable Mouse Wheel Scrolling on inactive Windows, MenuEnableFocuslessScroll
-
+    Menu, MySpecialMenu, add, Enable Scrolling by holding Middle mouse button, MenuEnableMButtonScroll
+}
 if ( (AddOnEnable_SpecialCharacters OR AddOnEnable_FocuslessScroll) AND ( AddOnEnable_DrawGrid OR AddOnEnable_ColourSampler ) )
     Menu, MySpecialMenu, add
 
@@ -304,10 +358,11 @@ if ( AddOnEnable_ColourSampler OR AddOnEnable_DrawGrid )
 ;
 Menu, MyOptionsMenu, add, Snap on Move, MenuSnapOnMoveHandler
 Menu, MyOptionsMenu, add, Snap on Resize, MenuSnapOnSizeHandler
+Menu, MyOptionsMenu, add, DPI-aware Borderless snapping, MenuBorderlessSnapping
 Menu, MyOptionsMenu, add
 Menu, MyOptionsMenu, add, Magnetic Resizing, MenuSnapOnResizeMagnetic
 Menu, MyOptionsMenu, add, Resize restores Maximized Window, MenuDoRestoreOnResize
-Menu, MyOptionsMenu, add, Use 3x3 grid on Resize, MenuUse3x3ResizeGrid
+Menu, MyOptionsMenu, add, Use 3x3 grid for Resize direction, MenuUse3x3ResizeGrid
 Menu, MyOptionsMenu, add
 Menu, MyOptionsMenu, add, Bring Windows to Front on dragging, MenuBringWindowToFront
 Menu, MyOptionsMenu, add, Show Window Contents while dragging, MenuShowWindowWhenDragging
@@ -340,10 +395,12 @@ if ( AddOnEnable_ToggleForeground OR AddOnEnable_ColourSampler OR AddOnEnable_Dr
     Menu, tray, add, Special Features, :MySpecialMenu
     Menu, tray, add
 }
-Menu, tray, add, Edit My Ini File, EditMyIni
-Menu, tray, add, Enable HotKeys, HotKeysToggle
+Menu, tray, add, Edit My Ini File, MenuEditMyIni
+Menu, tray, add, Enable HotKeys, MenuHotKeysToggle
+Menu, tray, add, Run as Administrator, MenuRunAsAdmin
+Menu, tray, add, Automatically run on startup, MenuStartupShortcut
 Menu, tray, add
-Menu, tray, add, Hide Tray Icon, HideIcon
+Menu, tray, add, Hide Tray Icon, MenuHideIcon
 Menu, tray, add
 Menu, tray, add, Exit, MenuExit
 
@@ -367,15 +424,21 @@ Menu, tray, add, Exit, MenuExit
         if EnableSpecialCharacters
             Menu, MySpecialMenu, ToggleCheck, Enable Hotkeys to insert Special Characters
 
-    if ( AddOnEnable_FocuslessScroll )
+    if ( AddOnEnable_FocuslessScroll ) {
         if EnableFocuslessScroll
             Menu, MySpecialMenu, ToggleCheck, Enable Mouse Wheel Scrolling on inactive Windows
+        if EnableMButtonScroll
+            Menu, MySpecialMenu, ToggleCheck, Enable Scrolling by holding Middle mouse button
+    }
 
     Menu, tray, Check, Enable HotKeys
+    
     if SnapOnMoveEnabled
         Menu, MyOptionsMenu, ToggleCheck, Snap on Move
     if SnapOnSizeEnabled
         Menu, MyOptionsMenu, ToggleCheck, Snap on Resize
+    if BorderlessSnapping
+        Menu, MyOptionsMenu, ToggleCheck, DPI-aware Borderless snapping
     if BringWindowToFront
         Menu, MyOptionsMenu, ToggleCheck, Bring Windows to Front on dragging
     if ShowWindowWhenDragging
@@ -387,21 +450,52 @@ Menu, tray, add, Exit, MenuExit
     if DoubleAltShortcuts
         Menu, tray, ToggleCheck, Enable Double-Alt Shortcuts
     if Use3x3ResizeGrid
-        Menu, MyOptionsMenu, ToggleCheck, Use 3x3 grid on Resize
+        Menu, MyOptionsMenu, ToggleCheck, Use 3x3 grid for Resize direction
+    
+    if RunAsAdministrator
+    {
+        Menu, tray, Check, Run as Administrator
+        if ! A_IsAdmin
+        {
+            Run, % "*RunAs " (A_IsCompiled ? "" : A_AhkPath " ") Chr(34) A_ScriptFullPath Chr(34),,UseErrorLevel
+            If ErrorLevel
+            {
+                MsgBox, % "Failed to run with Administrator permissions. Continue running as normal user.`r`n"
 
-#NoEnv          ; Recommended for performance and compatibility with future AutoHotkey releases. (jlr)
-;SendMode Input  ; Recommended for new scripts due to its superior speed and reliability. (jlr)
-;#IfTimeout 150 ; #if must complete in under 150ms or key will be passed through
+                RunAsAdministrator := 0
+                IniWrite, %RunAsAdministrator%, KDE_Mover-Sizer.ini, Settings, RunAsAdministrator
+                reload
+            }
+        }
+    }
+    
+    if (SubStr(WindowIgnoreList, 0) != ",")
+    {
+        WindowIgnoreList := WindowIgnoreList . ","
+        IniWrite, %WindowIgnoreList%,   KDE_Mover-Sizer.ini, Settings, WindowIgnoreList
+    }
+    
+    ;GroupAdd, FocuslessScroll_SendClick, ahk_class Scintilla1
+    ;GroupAdd, FocuslessScroll_SendClick, ahk_class Autohotkey
+    ;GroupAdd, FocuslessScroll_SendClick, ahk_class Windows.UI.Core.CoreWindow
+    
+    
+    if FileExist(startupLinkFile)
+        Menu, tray, Check, Automatically run on startup
 
-SetWinDelay, %WinDelay%
+    if ( BorderlessSnapping )
+        SetDefaultDpiAwarenessContext()
 
-CoordMode, Mouse,Screen
-CoordMode, Pixel,Screen
-CoordMode, ToolTip,Screen
+    Init_SetHotkeyHandler()
 
-MayToggle := true
-
-#MaxHotkeysPerInterval 150 ;Avoid warning when mouse wheel turned very fast
+    ; look for .ico in script directory and use it if found
+    if ! A_IsCompiled
+    {
+        SplitPath, A_ScriptFullPath, , dir,, name_no_ext
+        fn := dir "\" name_no_ext ".ico"
+        if (FileExist(fn))
+            Menu, Tray, Icon, %fn%
+    }
 
 if HideTrayIcon
 	Menu,Tray,NoIcon
@@ -431,6 +525,18 @@ MenuSnapOnSizeHandler:
     IniWrite, %SnapOnSizeEnabled%, KDE_Mover-Sizer.ini, Settings, SnapOnSizeEnabled
     if NOT SnapOnSizeEnabled AND SnapOnResizeMagnetic
         Gosub, MenuSnapOnResizeMagnetic
+    return
+
+MenuBorderlessSnapping:
+    if (BorderlessSnapping == 0 && (SubStr(A_OSVersion,1,3) == "WIN" || A_OSVersion < "10.0.14393"))
+    {
+        MsgBox, 0x30, Windows version too old!, % "DPI-aware Borderless snapping is not supported for Windows 10 Builds earlier than 14393 (v1607)"
+        return
+    }
+    Menu, MyOptionsMenu, ToggleCheck, DPI-aware Borderless snapping
+    BorderlessSnapping := NOT BorderlessSnapping
+    IniWrite, %BorderlessSnapping%, KDE_Mover-Sizer.ini, Settings, BorderlessSnapping
+    Reload
     return
 
 MenuDoubleAltShortcuts:
@@ -470,39 +576,40 @@ MenuDoRestoreOnResize:
     Menu, MyOptionsMenu, ToggleCheck, Resize restores Maximized Window
     DoRestoreOnResize := NOT DoRestoreOnResize
     If DoRestoreOnResize
-        Traytip Resize restores maximized Window, When enabled`, a maximized window is restored to its original size before resizing.`r`nWhen disabled`, a maximized window starts resizing from the maximized width and height.`r`nYou'll only notice the difference when you resize a maximized window`.,20,1
+        Traytip Resize restores maximized Window, When enabled`, a maximized window is restored to its original size before resizing.`r`nWhen disabled`, a maximized window starts resizing from the maximized width and height.`r`nYou will only notice the difference when you resize a maximized window`.,20,1
     IniWrite, %DoRestoreOnResize%, KDE_Mover-Sizer.ini, Settings, DoRestoreOnResize
     return
 
 MenuUse3x3ResizeGrid:
-    Menu, MyOptionsMenu, ToggleCheck, Use 3x3 grid on Resize
+    Menu, MyOptionsMenu, ToggleCheck, Use 3x3 grid for Resize direction
     Use3x3ResizeGrid := NOT Use3x3ResizeGrid
     If Use3x3ResizeGrid
-        Traytip Use 3x3 grid on Resize, The Windows is divided into 9 areas`. If the mouse is not on the corner fields`, direction of resizing is restricted`.,20,1
+        Traytip Use 3x3 grid for Resize direction, Target window is divided into 9 areas`. If the mouse is not on the corner fields`, direction of resizing is restricted`.,20,1
     else
-        Traytip Use 2x2 grid on Resize, % "The Windows is divided into 4 areas.`nDirection of resizing can be restricted with " . strname(LockHorizVert_Hotkey2) . ".",20,1
+        Traytip Use 2x2 grid for Resize direction, % "Target window is divided into 4 areas.`nDirection of resizing can be restricted with " . strname(LockHorizVert_Hotkey2) . ".",20,1
     IniWrite, %Use3x3ResizeGrid%, KDE_Mover-Sizer.ini, Settings, Use3x3ResizeGrid
     return
 
 
 ; *** MENU: Edit Windows Ignore List ***
 ;
+
 MenuAddWindowToIgnoreList:
     SetMouseCursorCross()
-    TrayTip Add window to Ignore list, Left-Click the window you want to restore the original application-specific hotkey behaviour`.`r`nUse this e.g. for Remote Desktop or imaging applications`., 20, 1
+    TrayTip, Add window to Ignore list, % "Left-Click the window you want to restore the original application-specific hotkey behaviour`.`r`n"
+             . "Use this e.g. for Remote Desktop or imaging applications.`r`n"
+             . "To just use the native Hotkey, try to press with another modifier key, e.g. Win or Shift`.", 20, 1
     KeyWait, LButton, D            ; Wait for left button to be pressed down
     SetMouseCursorDefault()
-    MouseGetPos, ,,curwin_id
-    WinGet currentwinname, ProcessName, ahk_id %curwin_id%
     
-    if ( InStr( WindowIgnoreList, currentwinname, CaseSensitive = false ) != 0 )
+    if (CheckIsWindowInList(WindowIgnoreList, WindowMatchStr))
     {
         TrayTip Add window to Ignore list, Application already on Ignore list, 2
         return
     }
-    WindowIgnoreList := WindowIgnoreList . currentwinname . ","
+    WindowIgnoreList := WindowIgnoreList . WindowMatchStr
     IniWrite, %WindowIgnoreList%,   KDE_Mover-Sizer.ini, Settings, WindowIgnoreList
-    TrayTip Applications now on Ignore list:, %WindowIgnoreList%, 10, 1
+    TrayTip Application now on Ignore list:, %WindowMatchStr%, 10, 1
     return
 
 MenuRemoveWindowFromIgnoreList:
@@ -510,12 +617,13 @@ MenuRemoveWindowFromIgnoreList:
     TrayTip Remove window from Ignore list, Left-Click the window which you want to control with KDE Mover-Sizer`., 15, 1
     KeyWait, LButton, D            ; Wait for left button to be pressed down
     SetMouseCursorDefault()
-    MouseGetPos, ,,curwin_id
-    WinGet currentwinname, ProcessName, ahk_id %curwin_id%
-    currentwinname := currentwinname . ","
-    StringReplace, WindowIgnoreList, WindowIgnoreList, %currentwinname%
-    IniWrite, %WindowIgnoreList%,   KDE_Mover-Sizer.ini, Settings, WindowIgnoreList
-    TrayTip Applications now on Ignore list:, %WindowIgnoreList%, 10, 1
+
+    if (CheckIsWindowInList(WindowIgnoreList, WindowMatchStr))
+    {
+        StringReplace, WindowIgnoreList, WindowIgnoreList, %WindowMatchStr%
+        IniWrite, %WindowIgnoreList%,   KDE_Mover-Sizer.ini, Settings, WindowIgnoreList
+        TrayTip Application removed from Ignore list:, %WindowMatchStr%, 10, 1
+    }
     return
 
 MenuShowIgnoreList:
@@ -638,7 +746,19 @@ MenuEnableFocuslessScroll:
     IniWrite, %EnableFocuslessScroll%, KDE_Mover-Sizer.ini, Special, EnableFocuslessScroll
     Init_SetHotkeyHandler()
     If EnableFocuslessScroll
-        Traytip Focusless Scrolling enabled, Mouse wheel scrolls window under mouse cursor`, even if it has no focus.`r`n(To include modifier combinations`, set FocuslessScrollModifier (*:any`, ^:Ctrl`, +:Shift) in Ini file. Keep in mind this may not work on all windows!),30,1
+        Traytip Focusless Scrolling enabled, Mouse wheel scrolls window under mouse cursor`, even if it has no focus.`r`n(To include modifier combinations`, set FocuslessScrollModifier (*:any`, ^:Ctrl`, +:Shift) in Ini file),30,1
+    Else
+        Reload
+    return
+
+MenuEnableMButtonScroll:
+    Menu, MySpecialMenu, ToggleCheck, Enable Scrolling by holding Middle mouse button
+
+    EnableMButtonScroll := NOT EnableMButtonScroll
+    IniWrite, %EnableMButtonScroll%, KDE_Mover-Sizer.ini, Special, EnableMButtonScroll
+    Init_SetHotkeyHandler()
+    If EnableMButtonScroll
+        Traytip Middle Mouse Button Scrolling enabled, Click and hold middle mouse button and move up and down to scroll window under mouse cursor`, even if it has no focus.`r`n(Keep in mind this may not work on all windows),30,1
     Else
         Reload
     return
@@ -679,12 +799,12 @@ MenuShowMeasuresAsToolTip:
 
 ; *** MENU: General functions
 ;
-EditMyIni:
+MenuEditMyIni:
     RunWait, KDE_Mover-Sizer.ini
     Reload
     return
 
-HotKeysToggle:
+MenuHotKeysToggle:
     Menu,Tray,Icon,,,1
     menu, tray, ToggleCheck,Enable HotKeys
     Suspend
@@ -694,71 +814,117 @@ MenuExit:
     ExitApp
     return
 
-HideIcon:
-	MsgBox, 4,Be Careful!, % "If you disable the tray icon will have no way to shutdown`r`n"
-. "KDE-Mover-Sizer!`r`n`r`n"
-. "To revert to the normal behaviour, you will need to set:`r`n`r`n"
-. "    HideTrayIcon=0`r`n`r`n"
-. "..in your KDE_Mover-Sizer.ini.`r`n`r`n"
-. "Are you sure you wish to continue disabling the icon?"
-	IfMsgBox No
-		return
-	HideTrayIcon = 1
-	IniWrite, %HideTrayIcon%, KDE_Mover-Sizer.ini, Settings, HideTrayIcon
-	Menu,Tray,NoIcon
-	return
+MenuRunAsAdmin:
+    Menu, tray, ToggleCheck, Run as Administrator
+    RunAsAdministrator := NOT RunAsAdministrator
+    IniWrite, %RunAsAdministrator%, KDE_Mover-Sizer.ini, Settings, RunAsAdministrator
+    if RunAsAdministrator
+    {
+        If !A_IsAdmin
+            reload
+    }
+    Else
+        Traytip Run as normal user on next start, Administrator permissions will remain until next start`., 20, 1
+    return
+
+MenuStartupShortcut:
+    If FileExist(startupLinkFile)
+    {
+        MsgBox, 0x21,Remove from Autostart?, % "Link exists in startup folder:`r`n" . startupLinkFile . "`r`n`r`n"
+                     . "Do you want to remove KDE Mover-Sizer from Autostart?"
+        IfMsgBox OK
+            FileDelete, %startupLinkFile%
+    }
+    Else {
+        MsgBox, 0x21,Enable Autostart?, % "Do you want to run KDE Mover-Sizer automatically on startup?`r`n`r`n"
+           . "Click OK to create a lnk file:`r`n" . startupLinkFile . "`r`n"
+        IfMsgBox OK
+        {
+            Args   := ""
+            If (A_IsCompiled)
+                target := Chr(34) A_ScriptFullPath Chr(34)
+            Else {
+                target := A_AhkPath
+                Args   := Chr(34) A_ScriptFullPath Chr(34)
+            }
+            FileCreateShortcut, %target%, %startupLinkFile%, %A_ScriptDir%, %Args%
+        }
+    }
+    
+    If FileExist(startupLinkFile)
+        Menu, tray, Check, Automatically run on startup
+    Else
+        Menu, tray, Uncheck, Automatically run on startup
+    return
+    
+MenuHideIcon:
+    MsgBox, 0x34,Be Careful!, % "If you disable the tray icon will have no way to shutdown`r`n"
+                              . "KDE-Mover-Sizer!`r`n`r`n"
+                              . "To revert to the normal behaviour, you will need to set:`r`n`r`n"
+                              . "    HideTrayIcon=0`r`n`r`n"
+                              . "..in your KDE_Mover-Sizer.ini.`r`n`r`n"
+                              . "Are you sure you wish to continue disabling the icon?"
+    IfMsgBox No
+        return
+    HideTrayIcon = 1
+    IniWrite, %HideTrayIcon%, KDE_Mover-Sizer.ini, Settings, HideTrayIcon
+    Menu,Tray,NoIcon
+    return
 
 MenuAbout:
-MsgBox,4,About KDE Mover-Sizer.., % "KDE Mover-Sizer..                                                Version 2.9 (September, 2014)`r`n"
-. "`r`n"
-. "KDE-Mover-Sizer (created with AutoHotKey: autohotkey.com) makes it easy`r`n"
-. "to move and resize windows without having to position your mouse cursor accurately.`r`n"
-. "Simply hold down the " . strname(MovingWindow_Hotkey) . " key, and click or drag anywhere on the window.`r`n"
-. "`r`n"
-. "During move or resize, use " . strname(LockHorizVert_Hotkey2) . " to lock movements horizontally or vertically.`r`n"
-. "During move or resize, (release,) press and hold " . strname(QuickPosition_Hotkey2) . " to quick-fit window into grid. Move mouse to select window position and size.`r`n"
-. "`r`n"
-. "The shortcuts:`r`n"
-. "`r`n"
-. "   " . strname(MovingWindow_Hotkey)   . " + " . strname(MovingWindow_Mouse) . " Button  -> Drag to move a window.`r`n"
-. "   " . strname(ResizingWindow_Hotkey) . " + " . strname(ResizingWindow_Mouse) . " Button -> Drag to resize a window.`r`n"
-. "   " . strname(ToggleMaximize_Hotkey) . " + " . strname(ToggleMaximize_Mouse) . " Button -> Maximize/Restore a window.`r`n"
-. "`r`n"
-. "    Double-" . strname(DoubleKey_Hotkey2) . " + " . strname(MovingWindow_Mouse) . " Button   -> Minimize a window.`r`n"
-. "    Double-" . strname(DoubleKey_Hotkey2) . " + " . strname(ResizingWindow_Mouse) . " Button  -> Maximize/Restore a window.  `r`n"
-. "    Double-" . strname(DoubleKey_Hotkey2) . " + " . strname(ToggleMaximize_Mouse) . " Button -> Close a window.`r`n"
-. "`r`n"
-. "     The Double-" . strname(DoubleKey_Hotkey2) . " modifier is activated by pressing the`r`n"
-. "     " . strname(DoubleKey_Hotkey2) . " key twice, much like a double-click. Hold the second`r`n"
-. "     " . strname(DoubleKey_Hotkey2) . "-press down until you click the mouse button. Tada!`r`n"
-. "`r`n"
-. "For more, see menu and tray info balloons.`r`n"
-. "For even more, edit the INI file and the [AddOns] section.`r`n"
-. "`r`n"
-. "If it doesn't work on all windows, try to run KDE-Mover-Sizer as administrator:`r`n"
-. "runas.exe /savecred /user:administrator """ . A_ScriptFullPath . """`r`n"
-. "`r`n"
-. "Known authors (in alphabetical order)..`r`n"
-. "`r`n"
-. "   aurelian`r`n"
-. "   Chris`r`n"
-. "   ck`r`n"
-. "   Cor`r`n"
-. "   Jonny`r`n"
-. "   jordoex`r`n"
-. "   Matthias Ihmig`r`n"
-. "   scoox`r`n"
-. "   shimanov`r`n"
-. "   thinkstorm`r`n"
-. "`r`n"
-. "Do you wish to visit the KDE Mover-Sizer web page?`r`n"
-
-IfMsgBox No
+    MsgBox,4,About KDE Mover-Sizer.., % "KDE Mover-Sizer..                                                Version 2.10 (March, 2025)`r`n"
+        . "`r`n"
+        . "KDE-Mover-Sizer (created AutoHotKey: autohotkey.com)`r`n"
+        . "makes it easy to move and resize windows without having`r`n"
+        . "to position your mouse cursor accurately.`r`n"
+        . "Simply hold down the " . strname(MovingWindow_Hotkey) . " key, and click or drag anywhere on the window.`r`n"
+        . "`r`n"
+        . "* During move or resize: use " . strname(LockHorizVert_Hotkey2) . " to lock movements horizontally`r`n   or vertically.`r`n"
+        . "* For snap-to-grid: start moving or resizing, then`r`n"
+        . "   release " . strname(QuickPosition_Hotkey2) . " (while keeping mousebutton pressed), then`r`n"
+        . "   push&hold " . strname(QuickPosition_Hotkey2) . " again, and`r`n"
+        . "   move mouse around with button still pressed.`r`n"
+        . "* To temporarily bypass KDE Mover-Sizer, e.g. for " . strname(MovingWindow_Hotkey) . "+Mouse,`r`n"
+        . "   try hotkey with an additional modifier key, such as Win.`r`n"
+        . "`r`n"
+        . "The shortcuts:`r`n"
+        . "`r`n"
+        . "   " . strname(MovingWindow_Hotkey)   . " + " . strname(MovingWindow_Mouse) . " Button  -> Drag to move a window.`r`n"
+        . "   " . strname(ResizingWindow_Hotkey) . " + " . strname(ResizingWindow_Mouse) . " Button -> Drag to resize a window.`r`n"
+        . "   " . strname(ToggleMaximize_Hotkey) . " + " . strname(ToggleMaximize_Mouse) . " Button -> Maximize/Restore a window.`r`n"
+        . "`r`n"
+        . "    Double-" . strname(DoubleKey_Hotkey2) . " + " . strname(MovingWindow_Mouse) . " Button   -> Minimize a window.`r`n"
+        . "    Double-" . strname(DoubleKey_Hotkey2) . " + " . strname(ResizingWindow_Mouse) . " Button  -> Maximize/Restore a window.  `r`n"
+        . "    Double-" . strname(DoubleKey_Hotkey2) . " + " . strname(ToggleMaximize_Mouse) . " Button -> Close a window.`r`n"
+        . "`r`n"
+        . "     The Double-" . strname(DoubleKey_Hotkey2) . " modifier is activated by pressing the`r`n"
+        . "     " . strname(DoubleKey_Hotkey2) . " key twice, much like a double-click. Hold the second`r`n"
+        . "     " . strname(DoubleKey_Hotkey2) . "-press down until you click the mouse button. Tada!`r`n"
+        . "`r`n"
+        . "For more, see menu and tray info balloons.`r`n"
+        . "For even more, edit the INI file and the [AddOns] section.`r`n"
+        . "`r`n"
+        . "Known authors (in alphabetical order)..`r`n"
+        . "`r`n"
+        . "   aurelian`r`n"
+        . "   Chris`r`n"
+        . "   ck`r`n"
+        . "   Cor`r`n"
+        . "   Jonny`r`n"
+        . "   jordoex`r`n"
+        . "   Matthias Ihmig`r`n"
+        . "   scoox`r`n"
+        . "   shimanov`r`n"
+        . "   thinkstorm`r`n"
+        . "`r`n"
+        . "Do you wish to visit the KDE Mover-Sizer web page?`r`n"
+    
+    IfMsgBox No
+        return
+    else IfMsgBox Yes
+            Run, https://corz.org/windows/software/accessories/KDE-resizing-moving-for-Windows.php
+    
     return
-else IfMsgBox Yes
-        Run, http://corz.org/windows/software/accessories/KDE-resizing-moving-for-XP-or-Vista.php
-
-return
 
 
 ; *********************************************************
@@ -816,9 +982,17 @@ Init_SetHotkeyHandler()
         Hotkey, %FocuslessScrollModifier%WheelUp,   DoFocuslessScrollUp, On
         HotKey, %FocuslessScrollModifier%WheelDown, DoFocuslessScrollDown, On
     }
+    if ( AddOnEnable_FocuslessScroll AND EnableMButtonScroll )
+    {
+        Hotkey, MButton, DoMButtonScroll
+        ;Hotkey, ~MButton Up, DoMButtonScrollUp
+        Hotkey, MButton Up, DoMButtonScrollUp
+    }
     
     if ( DoubleAltShortcuts )
+    {
         Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
+    }
 }
 
 ; *********************************************
@@ -827,7 +1001,7 @@ Init_SetHotkeyHandler()
 ;
 DoMovingWindowMinimize:
 
-    If CheckIsWindowInIgnoreList(WindowIgnoreList)
+    If CheckIsWindowInList(WindowIgnoreList, WindowMatchStr)
     {
         SendEvent {Blind}{%MovingWindow_Mouse% down}
         KeyWait %MovingWindow_Mouse%, U
@@ -835,9 +1009,13 @@ DoMovingWindowMinimize:
         return
     }
 
+    ; There is sometimes a slight delay when grabbing window during moving the mouse, which results in the wrong window being dragged
+    ; -> identify target window earlier and then use it
+    
+    MouseGetPos, KDE_X1,KDE_Y1,KDE_id
+
     If DoubleAlt
     {
-        MouseGetPos,,,KDE_id
         ; This message is mostly equivalent to WinMinimize,
         ; but it avoids a bug with PSPad.
         PostMessage, 0x112,0xf020,,,ahk_id %KDE_id%
@@ -849,39 +1027,84 @@ DoMovingWindowMinimize:
     }
 
     ; Vista+ Alt-Tab fix by jordoex..
-    IfWinActive ahk_class TaskSwitcherWnd
+    If WinActive("ahk_class TaskSwitcherWnd") or WinActive("ahk_class MultitaskingViewFrame") or WinActive("ahk_class XamlExplorerHostIslandWindow")
     {
         Send {Blind}{%MovingWindow_Mouse%}
         return
     }
 
+    ; ********************************************
+    ; Init-stuff /before/ switching DPI context
+
     ; stop the double-key from interfering
     if ( DoubleAltShortcuts )
+    {
         Hotkey, ~%DoubleKey_Hotkey2%, Off
+    }
+
+ 
+    WinGet, KDE_Win,MinMax,ahk_id %KDE_id%
+    If KDE_Win
+    {
+        WinRestore,ahk_id %KDE_id%     ; restore window size
+        WinGetPos, KDE_WinX1, KDE_WinY1, KDE_WinW, KDE_WinH, ahk_id %KDE_id%
+        WinMove, ahk_id %KDE_id%,, (KDE_X1 - KDE_WinW/2), (KDE_Y1 - KDE_WinH/2), %KDE_WinW%, %KDE_WinH%
+        Sleep,20
+    }
+    
+    ; Get the initial window offset for borderless snapping. Because of Windows bug, this only works in DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE mode,
+    ; so we need to get it before we switch to the target window mode
+    ; if we can't (old Windows) or don't care, just set all offsets to zero
+    If ( BorderlessSnapping )
+    {
+        WinGetOffset(KDE_WinOffX,KDE_WinOffY,KDE_WinOffW,KDE_WinOffH, KDE_id)
+
+        wndDpiAwareness := GetWindowDpiAwareness(KDE_id)
+        SetWindowSpecificDpiAwarenessContext(wndDpiAwareness)
+    }
+    Else
+        KDE_WinOffX := KDE_WinOffY := KDE_WinOffW := KDE_WinOffH := 0
+    
+    ; *******************************************
+    ; Init-stuff /after/ switching DPI context
+
+    If ( NOT ShowWindowWhenDragging )
+    {
+        ; our rect frame includes the invisible border -> only use offset in final WinMove
+        KDE_WinOffFrameX := KDE_WinOffX
+        KDE_WinOffFrameY := KDE_WinOffY
+        KDE_WinOffFrameW := KDE_WinOffW
+        KDE_WinOffFrameH := KDE_WinOffH
+        KDE_WinOffX := KDE_WinOffY := KDE_WinOffW := KDE_WinOffH := 0
+        
+        DrawRectFrame_Prepare()
+    }
 
     SaveOriginalWindowState()     ; and enable ESC keys
-    
-    If ( NOT ShowWindowWhenDragging )
-        DrawRectFrame_Prepare()
 
-    ; Get the initial mouse position and window id, and
-    ; WinRestore if the window is maximized.
+    ; Get the initial mouse position in the new DPI coordinate system,
+    ; and do WinRestore if the window is maximized.
 
-    MouseGetPos, KDE_X1,KDE_Y1,KDE_id
+    MouseGetPos, KDE_X1,KDE_Y1
 
     If ( BringWindowToFront )
         WinActivate, ahk_id %KDE_id% 
-    WinGet, KDE_Win,MinMax,ahk_id %KDE_id%
 
-    If KDE_Win
-        WinRestore,ahk_id %KDE_id%     ; restore window size
-
-    QuickPosition_Button_wasUp := NOT GetKeyState( QuickPosition_Hotkey2, "P" )     ; check that Alt button was released once before window is QuickPositioned.
-    LockHorizVert_Button_wasUp := NOT GetKeyState( LockHorizVert_Hotkey2, "P" )     ; check that Shift button was released once before movement is locked.
+    QuickPosition_Button_wasUp := 0     ; used for checking if Alt   button was released once before window is QuickPositioned.
+    LockHorizVert_Button_wasUp := 0     ; used for checking if Shift button was released once before movement is locked.
 
     ; Get the initial window position.
-    WinGetPos,KDE_WinX1,KDE_WinY1,KDE_WinW,KDE_WinH,ahk_id %KDE_id%
-
+    WinGetPos, KDE_WinX1, KDE_WinY1, KDE_WinW, KDE_WinH, ahk_id %KDE_id%
+    
+    If ( BorderlessSnapping AND NOT ShowWindowWhenDragging )
+    {
+        ; we want to draw a frame matching the window (without invisible borders), so shrink it
+        KDE_WinX1 := KDE_WinX1 - KDE_WinOffFrameX
+        KDE_WinY1 := KDE_WinY1 - KDE_WinOffFrameY
+        KDE_WinW  := KDE_WinW  - KDE_WinOffFrameW
+        KDE_WinH  := KDE_WinH  - KDE_WinOffFrameH
+    }
+    
     Loop
     {
         GetKeyState,KDE_Button,%MovingWindow_Mouse%,P ; Break if button has been released.
@@ -891,22 +1114,26 @@ DoMovingWindowMinimize:
         GetKeyState,Esc_Button,Escape,P ; Break if escape button was pressed.
         If Esc_Button = D
         {
-            RestoreOriginalWindowState()
+            If ( ShowWindowWhenDragging )
+                RestoreOriginalWindowState()
             break
         }
+        
+        if ( QuickPosition_Button_wasUp == 0 AND GetKeyState( QuickPosition_Hotkey2, "P" ) == 0)
+            QuickPosition_Button_wasUp := 1
+        if ( LockHorizVert_Button_wasUp == 0 AND GetKeyState( LockHorizVert_Hotkey2, "P" ) == 0)
+            LockHorizVert_Button_wasUp := 1
 
-        if ( NOT QuickPosition_Button_wasUp )
-            QuickPosition_Button_wasUp := NOT GetKeyState( QuickPosition_Hotkey2, "P" )
-        if ( NOT LockHorizVert_Button_wasUp )
-            LockHorizVert_Button_wasUp := NOT GetKeyState( LockHorizVert_Hotkey2, "P" )
+        MouseGetPos,MouseX,MouseY ; Get the current mouse position.
 
-        if ( QuickPosition_Button_wasUp AND GetKeyState( QuickPosition_Hotkey2 , "P" ) )      ; no regular moving, but quickly snap and resize window to screen edge/corner
+        if ( QuickPosition_Button_wasUp AND GetKeyState( QuickPosition_Hotkey2 , "P" ))      ; no regular moving, but quickly snap and resize window to screen edge/corner
         {
-            QuickPositionWindowOnEdge( KDE_WinX2, KDE_WinY2, KDE_WinW2, KDE_WinH2 )
+            QuickPositionWindowOnEdge(MouseX,MouseY, KDE_WinX2, KDE_WinY2, KDE_WinW2, KDE_WinH2,  KDE_WinOffX, KDE_WinOffY, KDE_WinOffW, KDE_WinOffH )
         }
-        else 
+        else
         {
-            MouseGetPos,KDE_X2,KDE_Y2 ; Get the current mouse position.
+            KDE_X2 := MouseX
+            KDE_Y2 := MouseY
             KDE_X2 -= KDE_X1    ; Obtain an offset from the initial mouse position.
             KDE_Y2 -= KDE_Y1
             
@@ -922,21 +1149,25 @@ DoMovingWindowMinimize:
             KDE_WinY2 := (KDE_WinY1 + KDE_Y2)
     
             ; get current screen boarders for snapping, do this within the loop to allow snapping an all monitors without releasing button
-            GetCurrentScreenBoarders(CurrentScreenLeft, CurrentScreenRight, CurrentScreenTop, CurrentScreenBottom)
+            GetCurrentScreenBorders(MouseX,MouseY, CurrentScreenLeft, CurrentScreenRight, CurrentScreenTop, CurrentScreenBottom)
 
             if SnapOnMoveEnabled
             {
-                if (KDE_WinX2 < CurrentScreenLeft + SnappingDistance) AND (KDE_WinX2 > CurrentScreenLeft - SnappingDistance)
-                    KDE_WinX2 := CurrentScreenLeft 
+                if (     KDE_WinX2 - KDE_WinOffX < CurrentScreenLeft + SnappingDistance)
+                    AND (KDE_WinX2 - KDE_WinOffX > CurrentScreenLeft - SnappingDistance)
+                        KDE_WinX2 := CurrentScreenLeft + KDE_WinOffX
 
-                if (KDE_WinY2 < CurrentScreenTop + SnappingDistance) AND (KDE_WinY2 > CurrentScreenTop - SnappingDistance)
-                    KDE_WinY2 := CurrentScreenTop
+                if (     KDE_WinY2 - KDE_WinOffY < CurrentScreenTop + SnappingDistance)
+                    AND (KDE_WinY2 - KDE_WinOffY > CurrentScreenTop - SnappingDistance)
+                        KDE_WinY2 := CurrentScreenTop + KDE_WinOffY
 
-                if (KDE_WinX2 + KDE_WinW > CurrentScreenRight - SnappingDistance) AND (KDE_WinX2 + KDE_WinW < CurrentScreenRight + SnappingDistance)
-                    KDE_WinX2 := CurrentScreenRight - KDE_WinW
+                if (     KDE_WinX2 - KDE_WinOffX  + KDE_WinW - KDE_WinOffW > CurrentScreenRight - SnappingDistance)
+                    AND (KDE_WinX2 - KDE_WinOffX  + KDE_WinW - KDE_WinOffW < CurrentScreenRight + SnappingDistance)
+                        KDE_WinX2 := CurrentScreenRight  - KDE_WinW + KDE_WinOffW + KDE_WinOffX
 
-                if (KDE_WinY2 + KDE_WinH > CurrentScreenBottom - SnappingDistance) AND (KDE_WinY2 + KDE_WinH < CurrentScreenBottom + SnappingDistance)
-                    KDE_WinY2 := CurrentScreenBottom - KDE_WinH
+                if (     KDE_WinY2 + KDE_WinH - KDE_WinOffH > CurrentScreenBottom - SnappingDistance)
+                    AND (KDE_WinY2 + KDE_WinH - KDE_WinOffH < CurrentScreenBottom + SnappingDistance)
+                        KDE_WinY2 := CurrentScreenBottom - KDE_WinH + KDE_WinOffH + KDE_WinOffY
             }
             KDE_WinW2 := KDE_WinW
             KDE_WinH2 := KDE_WinH
@@ -952,15 +1183,19 @@ DoMovingWindowMinimize:
     {
         DrawRectFrame_Cancel()
         If Esc_Button = U
-            WinMove, ahk_id %KDE_id%,, %KDE_WinX2%, %KDE_WinY2%, %KDE_WinW2%, %KDE_WinH2%  ; Move the window to the new position.
+            WinMove, ahk_id %KDE_id%,, (KDE_WinX2 + KDE_WinOffFrameX), (KDE_WinY2 + KDE_WinOffFrameY), (KDE_WinW2 + KDE_WinOffFrameW), (KDE_WinH2 + KDE_WinOffFrameH) ; Move the window to the new position.
     }
+
+    If ( BorderlessSnapping )
+        RestoreWindowSpecificDpiAwarenessContext(wndDpiAwareness)
 
     DisableEscapeHotkey()
 
     ; reenable DoubleKey_Hotkey
     if ( DoubleAltShortcuts )
+    {
         Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
-
+    }
     return
 
 
@@ -970,7 +1205,7 @@ DoMovingWindowMinimize:
 ;
 DoResizingWindowMaximize:
 
-    If CheckIsWindowInIgnoreList(WindowIgnoreList)
+    If CheckIsWindowInList(WindowIgnoreList, WindowMatchStr)
     {
         SendEvent {Blind}{%ResizingWindow_Mouse% down}
         KeyWait %ResizingWindow_Mouse%, U
@@ -978,10 +1213,13 @@ DoResizingWindowMaximize:
         return
     }
 
+    ; There is a slight delay when grabbing window during moving the mouse, which sometimes results in the wrong window being dragged
+    ; -> identify target window earlier (here)
+    
+    MouseGetPos, KDE_X1,KDE_Y1,KDE_id
+
     If DoubleAlt
     {
-        MouseGetPos,,,KDE_id
-
         If ( BringWindowToFront )
             WinActivate, ahk_id %KDE_id%
 
@@ -999,28 +1237,23 @@ DoResizingWindowMaximize:
     }
 
     ; Vista+ Alt-Tab fix by jordoex..
-    IfWinActive ahk_class TaskSwitcherWnd
+    If WinActive("ahk_class TaskSwitcherWnd") or WinActive("ahk_class MultitaskingViewFrame") or WinActive("ahk_class XamlExplorerHostIslandWindow")
     {
         Send {Blind}{%ResizingWindow_Mouse%}
         return
     }
 
+    ; ********************************************
+    ; Init-stuff /before/ switching DPI context
+
     ; stop the double-key from interfering
     if ( DoubleAltShortcuts )
+    {
         Hotkey, ~%DoubleKey_Hotkey2%, Off
-
-    If ( NOT ShowWindowWhenDragging )
-        DrawRectFrame_Prepare()
-
-    SaveOriginalWindowState()
+    }
 
     ; Get the initial mouse position and window id, and
     ; do WinRestore if the window is maximized.
-
-    MouseGetPos, KDE_X1,KDE_Y1,KDE_id
-
-    If ( BringWindowToFront )
-        WinActivate, ahk_id %KDE_id% 
 
     WinGet, KDE_Win,MinMax,ahk_id %KDE_id%
 
@@ -1030,23 +1263,85 @@ DoResizingWindowMaximize:
             WinRestore, ahk_id %KDE_id%
         else
         {
-            GetCurrentScreenBoarders(CurrentScreenLeft, CurrentScreenRight, CurrentScreenTop, CurrentScreenBottom)
+            WinGetPos, KDE_WinX1, KDE_WinY1, KDE_WinW, KDE_WinH, ahk_id %KDE_id%
+            GetCurrentScreenBorders(KDE_X1,KDE_Y1, CurrentScreenLeft, CurrentScreenRight, CurrentScreenTop, CurrentScreenBottom)
+
+            KDE_WinX1 := CurrentScreenLeft + KDE_WinOffX
+            KDE_WinY1 := CurrentScreenTop  + KDE_WinOffY
+            KDE_WinW  := CurrentScreenRight  - CurrentScreenLeft + KDE_WinOffW
+            KDE_WinH  := CurrentScreenBottom - CurrentScreenTop  + KDE_WinOffH
+
             WinRestore, ahk_id %KDE_id%
-            WinMove, ahk_id %KDE_id%,, CurrentScreenLeft  ; X of resized window
-                                , CurrentScreenTop       ; Y of resized window
-                                , CurrentScreenRight  - CurrentScreenLeft ; W of resized window
-                                , CurrentScreenBottom - CurrentScreenTop  ; H of resized window
+            WinMove, ahk_id %KDE_id%,, KDE_WinX1, KDE_WinY1, KDE_WinW, KDE_WinH
         }
+        Sleep,10
     }
 
+    ; Get the initial window offset for borderless snapping. Because of Windows bug only works in DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE mode,
+    ; so we need to get it before we switch to the target window mode
+    ; if we can't (old Windows) or don't care, just set all offsets to zero
+    If ( BorderlessSnapping )
+    {
+        WinGetOffset(KDE_WinOffX,KDE_WinOffY,KDE_WinOffW,KDE_WinOffH, KDE_id)
+
+        wndDpiAwareness := GetWindowDpiAwareness(KDE_id)
+        SetWindowSpecificDpiAwarenessContext(wndDpiAwareness)
+    }
+    Else
+        KDE_WinOffX := KDE_WinOffY := KDE_WinOffW := KDE_WinOffH := 0
+    
+    
+    ; *******************************************
+    ; Init-stuff /after/ switching DPI context
+
+    If ( NOT ShowWindowWhenDragging )
+    {
+        ; our rect frame includes the invisible border -> only use offset in final WinMove
+        KDE_WinOffFrameX := KDE_WinOffX
+        KDE_WinOffFrameY := KDE_WinOffY
+        KDE_WinOffFrameW := KDE_WinOffW
+        KDE_WinOffFrameH := KDE_WinOffH
+        KDE_WinOffX := KDE_WinOffY := KDE_WinOffW := KDE_WinOffH := 0
+        
+        DrawRectFrame_Prepare()
+    }
+
+    SaveOriginalWindowState()     ; and enable ESC keys
+
+    MouseGetPos, KDE_X1, KDE_Y1
+
+    If ( BringWindowToFront )
+        WinActivate, ahk_id %KDE_id% 
+
     ; Get the initial window position and size.
-    WinGetPos,KDE_WinX1,KDE_WinY1,KDE_WinW, KDE_WinH, ahk_id %KDE_id%
-    WinGetPos,KDE_WinX2,KDE_WinY2,KDE_WinW2,KDE_WinH2,ahk_id %KDE_id%
+    WinGetPos, KDE_WinX1, KDE_WinY1, KDE_WinW, KDE_WinH, ahk_id %KDE_id%
+    
+    If ( NOT ShowWindowWhenDragging AND BorderlessSnapping)
+    {
+        ; we want to draw a frame matching the window (without invisible borders), so we shrink it
+        KDE_WinX1 := KDE_WinX1 - KDE_WinOffFrameX
+        KDE_WinY1 := KDE_WinY1 - KDE_WinOffFrameY
+        KDE_WinW  := KDE_WinW  - KDE_WinOffFrameW
+        KDE_WinH  := KDE_WinH  - KDE_WinOffFrameH
+    }
+    
+    KDE_WinX2 := KDE_WinX1
+    KDE_WinY2 := KDE_WinY1
+    KDE_WinW2 := KDE_WinW
+    KDE_WinH2 := KDE_WinH
 
     ; save original position to use for locked magnetic resizing
     MouseGetPos, Lock_saveKDE_X1, Lock_saveKDE_Y1
-    WinGetPos,   Lock_saveKDE_WinX2, Lock_saveKDE_WinY2, Lock_saveKDE_WinW2, Lock_saveKDE_WinH2, ahk_id %KDE_id%
-
+    
+    WinGetPos, Lock_saveKDE_WinX2, Lock_saveKDE_WinY2, Lock_saveKDE_WinW2, Lock_saveKDE_WinH2, ahk_id %KDE_id%
+    If ( NOT ShowWindowWhenDragging AND BorderlessSnapping)
+    {
+        ; we want to draw a frame matching the window (without invisible borders), so we shrink it
+        Lock_saveKDE_WinX2 := Lock_saveKDE_WinX2 - KDE_WinOffFrameX
+        Lock_saveKDE_WinY2 := Lock_saveKDE_WinY2 - KDE_WinOffFrameY
+        Lock_saveKDE_WinW2 := Lock_saveKDE_WinW2 - KDE_WinOffFrameW
+        Lock_saveKDE_WinH2 := Lock_saveKDE_WinH2 - KDE_WinOffFrameH
+    }
     ; Define the window region the mouse is currently in.
     ;
     if NOT Use3x3ResizeGrid      ; use 2x2 grid
@@ -1093,7 +1388,8 @@ DoResizingWindowMaximize:
         GetKeyState, Esc_Button,Escape,P ; Break if escape button was pressed.
         If Esc_Button = D
         {
-            RestoreOriginalWindowState()
+            If ( ShowWindowWhenDragging )
+                RestoreOriginalWindowState()
             break
         }
 
@@ -1119,7 +1415,15 @@ DoResizingWindowMaximize:
                     KDE_X2 := 0
                     KDE_Y2 := 0
                     If ( ShowWindowWhenDragging )
+                    {
+                        If ( BorderlessSnapping )
+                            SetWindowSpecificDpiAwarenessContext(wndDpiAwareness)
+
                         WinMove, ahk_id %KDE_id%,, %KDE_WinX2%, %KDE_WinY2%, %KDE_WinW2%, %KDE_WinH2%
+                        
+                        If ( BorderlessSnapping )
+                            RestoreWindowSpecificDpiAwarenessContext(wndDpiAwareness)
+                    }
                     Else
                         DrawRectFrame_Show( KDE_WinX2, KDE_WinY2, KDE_WinW2, KDE_WinH2 )
             
@@ -1155,7 +1459,7 @@ DoResizingWindowMaximize:
         ; snap the window to the edge of the screen if closer than 10 pixels to border
         ; first, get current screen boarders for snapping, do this within the loop to allow snapping an all monitors without releasing button
         ; get current screen boarders for snapping, do this within the loop to allow snapping an all monitors without releasing button
-        GetCurrentScreenBoarders(CurrentScreenLeft, CurrentScreenRight, CurrentScreenTop, CurrentScreenBottom)
+        GetCurrentScreenBorders(MouseX,MouseY, CurrentScreenLeft, CurrentScreenRight, CurrentScreenTop, CurrentScreenBottom)
 
         if ( NOT QuickPosition_Button_wasUp )
             QuickPosition_Button_wasUp := NOT GetKeyState( QuickPosition_Hotkey2, "P" )
@@ -1174,7 +1478,7 @@ DoResizingWindowMaximize:
                 QuickPos_saveKDE_WinH2 := KDE_WinH2
                 QuickPosition_wasActive := 1
             }
-            QuickPositionWindowOnEdge( KDE_WinX2, KDE_WinY2, KDE_WinW2, KDE_WinH2 )
+            QuickPositionWindowOnEdge(MouseX,MouseY, KDE_WinX2, KDE_WinY2, KDE_WinW2, KDE_WinH2,  KDE_WinOffX, KDE_WinOffY, KDE_WinOffW, KDE_WinOffH )
         }
         else if (SnapOnSizeEnabled AND NOT SnapOnResizeMagnetic)    ; "normal" resizing
         {
@@ -1183,19 +1487,31 @@ DoResizingWindowMaximize:
             KDE_WinW2 := (KDE_WinW  -  KDE_WinLeft *KDE_X2) ; W of resized windows
             KDE_WinH2 := (KDE_WinH  -  KDE_WinUp   *KDE_Y2) ; H of resized windows
 
-            if (KDE_WinX2 < CurrentScreenLeft + SnappingDistance) AND (KDE_WinX2 > CurrentScreenLeft - SnappingDistance) AND (KDE_WinLeft > 0) {
-                KDE_WinW2 := KDE_WinW + KDE_WinX1 - CurrentScreenLeft
-                KDE_WinX2 := CurrentScreenLeft
+            if (     KDE_WinX2 - KDE_WinOffX < CurrentScreenLeft + SnappingDistance)
+                AND (KDE_WinX2 - KDE_WinOffX > CurrentScreenLeft - SnappingDistance)
+                AND (KDE_WinLeft > 0)
+            {
+                KDE_WinX2 := CurrentScreenLeft + KDE_WinOffX
+                KDE_WinW2 := KDE_WinW + KDE_WinX1 - CurrentScreenLeft  - KDE_WinOffX
             }
-            if (KDE_WinY2 < CurrentScreenTop + SnappingDistance) AND (KDE_WinY2 > CurrentScreenTop - SnappingDistance) AND (KDE_WinUp > 0) {
-                KDE_WinH2 := KDE_WinH + KDE_WinY1 - CurrentScreenTop
-                KDE_WinY2 := CurrentScreenTop
+            if (     KDE_WinY2 - KDE_WinOffY < CurrentScreenTop + SnappingDistance)
+                AND (KDE_WinY2 - KDE_WinOffY > CurrentScreenTop - SnappingDistance)
+                AND (KDE_WinUp > 0)
+            {
+                KDE_WinY2 := CurrentScreenTop + KDE_WinOffY
+                KDE_WinH2 := KDE_WinH + KDE_WinY1 - CurrentScreenTop  - KDE_WinOffY
             }
-            if (KDE_WinX2 + KDE_WinW2 > CurrentScreenRight - SnappingDistance) AND (KDE_WinX2 + KDE_WinW2 < CurrentScreenRight + SnappingDistance)  AND (KDE_WinLeft < 0) {
-                KDE_WinW2 := - KDE_WinX1 + CurrentScreenRight
+            if (     KDE_WinX2 - KDE_WinOffX + KDE_WinW2 - KDE_WinOffW > CurrentScreenRight - SnappingDistance)
+                AND (KDE_WinX2 - KDE_WinOffX + KDE_WinW2 - KDE_WinOffW < CurrentScreenRight + SnappingDistance)
+                AND (KDE_WinLeft < 0)
+            {
+                KDE_WinW2 := - KDE_WinX1 + CurrentScreenRight  + (KDE_WinOffW+KDE_WinOffX)
             }
-            if (KDE_WinY2 + KDE_WinH2 > CurrentScreenBottom - SnappingDistance) AND (KDE_WinY2 + KDE_WinH2 < CurrentScreenBottom + SnappingDistance) AND (KDE_WinUp < 0) {
-                KDE_WinH2 := - KDE_WinY1 + CurrentScreenBottom
+            if (     KDE_WinY2 + KDE_WinH2 - KDE_WinOffH > CurrentScreenBottom - SnappingDistance)
+                AND (KDE_WinY2 + KDE_WinH2 - KDE_WinOffH < CurrentScreenBottom + SnappingDistance)
+                AND (KDE_WinUp < 0)
+            {
+                KDE_WinH2 := - KDE_WinY1 + CurrentScreenBottom + (KDE_WinOffH+KDE_WinOffY)
             }
         }
         else if (SnapOnSizeEnabled AND SnapOnResizeMagnetic)      ;  Magnetic Edges resize the window but keep the edge "locked"
@@ -1220,17 +1536,17 @@ DoResizingWindowMaximize:
             KDE_WinW  := KDE_WinW2
             KDE_WinH  := KDE_WinH2
 
-            if (KDE_WinX1 < CurrentScreenLeft + SnappingDistance) ;AND (KDE_WinX1 > CurrentScreenLeft - SnappingDistance)
-                KDE_WinX1 := CurrentScreenLeft
+            if (KDE_WinX1 - KDE_WinOffX < CurrentScreenLeft + SnappingDistance) ;AND (KDE_WinX1 - KDE_WinOffX > CurrentScreenLeft - SnappingDistance)
+                KDE_WinX1 := CurrentScreenLeft + KDE_WinOffX
 
-            if (KDE_WinY1 < CurrentScreenTop + SnappingDistance) ;AND (KDE_WinY1 > CurrentScreenTop - SnappingDistance)
-                KDE_WinY1 := CurrentScreenTop
+            if (KDE_WinY1 - KDE_WinOffY < CurrentScreenTop + SnappingDistance) ;AND (KDE_WinY1 - KDE_WinOffY> CurrentScreenTop - SnappingDistance)
+                KDE_WinY1 := CurrentScreenTop + KDE_WinOffY
 
-            if (KDE_WinX1 + KDE_WinW > CurrentScreenRight - SnappingDistance) ;AND (KDE_WinX1 + KDE_WinW < CurrentScreenRight + SnappingDistance)
-                KDE_WinX1 := CurrentScreenRight - KDE_WinW
+            if (KDE_WinX1 - KDE_WinOffX + KDE_WinW - KDE_WinOffW > CurrentScreenRight - SnappingDistance) ;AND (KDE_WinX1-KDE_WinOffX + KDE_WinW-KDE_WinOffW < CurrentScreenRight + SnappingDistance)
+                KDE_WinX1 := CurrentScreenRight - KDE_WinW + (KDE_WinOffW+KDE_WinOffX)
 
-            if (KDE_WinY1 + KDE_WinH > CurrentScreenBottom - SnappingDistance) ;AND (KDE_WinY1 + KDE_WinH < CurrentScreenBottom + SnappingDistance)
-                KDE_WinY1 := CurrentScreenBottom - KDE_WinH
+            if (KDE_WinY1 - KDE_WinOffY + KDE_WinH - KDE_WinOffH > CurrentScreenBottom - SnappingDistance) ;AND (KDE_WinY1-KDE_WinOffY + KDE_WinH-KDE_WinOffH < CurrentScreenBottom + SnappingDistance)
+                KDE_WinY1 := CurrentScreenBottom - KDE_WinH + (KDE_WinOffH+KDE_WinOffY)
 
             KDE_WinX2 := (KDE_WinX1 + (KDE_WinLeft =1 ? 1 : 0)*KDE_X2) ; X of resized windows
             KDE_WinY2 := (KDE_WinY1 + (KDE_WinUp   =1 ? 1 : 0)*KDE_Y2) ; Y of resized windows
@@ -1253,21 +1569,26 @@ DoResizingWindowMaximize:
             WinMove, ahk_id %KDE_id%,, %KDE_WinX2%, %KDE_WinY2%, %KDE_WinW2%, %KDE_WinH2%
         Else
             DrawRectFrame_Show( KDE_WinX2, KDE_WinY2, KDE_WinW2, KDE_WinH2 )
-        Sleep, 1
     }
 
     If ( NOT ShowWindowWhenDragging )
     {
         DrawRectFrame_Cancel()
+
         If Esc_Button = U
-            WinMove, ahk_id %KDE_id%,, %KDE_WinX2%, %KDE_WinY2%, %KDE_WinW2%, %KDE_WinH2%  ; Move the window to the new position.
+            WinMove, ahk_id %KDE_id%,, (KDE_WinX2 + KDE_WinOffFrameX), (KDE_WinY2 + KDE_WinOffFrameY), (KDE_WinW2 + KDE_WinOffFrameW), (KDE_WinH2 + KDE_WinOffFrameH) ; Move the window to the new position.
     }
+
+    If ( BorderlessSnapping )
+        RestoreWindowSpecificDpiAwarenessContext(wndDpiAwareness)
 
     DisableEscapeHotkey()
 
     ; reenable DoubleKey_Hotkey
     if ( DoubleAltShortcuts )
+    {
         Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
+    }
 
     return
 
@@ -1278,7 +1599,7 @@ DoResizingWindowMaximize:
 
 DoToggleMaximize:
 
-    If CheckIsWindowInIgnoreList(WindowIgnoreList)
+    If CheckIsWindowInList(WindowIgnoreList, WindowMatchStr)
     {
         SendEvent {Blind}{%ToggleMaximize_Mouse% down}
         KeyWait %ToggleMaximize_Mouse%, U
@@ -1299,7 +1620,7 @@ DoToggleMaximize:
 
     ; Toggle window Maximize/Original size with Alt+Middle mouse button
     ;
-    If MayToggle
+    If MayToggleMaximizeRestore
     {
         ; Toggle between maximized and restored state of window under mouse cursor
         MouseGetPos, ,,KDE_id
@@ -1309,14 +1630,15 @@ DoToggleMaximize:
         Else
             WinMaximize, ahk_id %KDE_id%
 
-        MayToggle := false
+        MayToggleMaximizeRestore := false
         return
     }
     return
 
 DoToggleMaximize_Up:
-    MayToggle := true
+    MayToggleMaximizeRestore := true
     return
+
 
 
 ; ********************************************************************************
@@ -1350,7 +1672,7 @@ OnDoubleKey:
 
 DoDrawGridOverlay:
 
-    If CheckIsWindowInIgnoreList(WindowIgnoreList) OR NOT EnableDrawGrid
+    If CheckIsWindowInList(WindowIgnoreList, WindowMatchStr) OR NOT EnableDrawGrid
     {
         SendEvent {Blind}{%DrawGridOverlay_Mouse% down}
         KeyWait %DrawGridOverlay_Mouse%, U
@@ -1366,7 +1688,7 @@ DoDrawGridOverlay:
 
     Loop, 12
     {
-        Gui, %A_Index%: -Caption +ToolWindow +AlwaysOnTOp +OwnDialogs %DrawGridGUIOptions%
+        Gui, %A_Index%: -Caption +ToolWindow +AlwaysOnTOp +OwnDialogs -DPIScale %DrawGridGUIOptions%
         Gui, %A_Index%: Color, %DrawGridColour%
     }
 
@@ -1539,9 +1861,10 @@ DoDrawGridOverlay:
     DllCall("RedrawWindow", "Uint", curwin_id , "Uint", 0, "Uint", 0, "Uint", 0x81)    ; Workaround for WinSet, Redraw,, ahk_id %curwin_id% (didn't work for Gimp)
 
     ; save (new) tooltip position
-    ; there seems no way to filter for our own tooltip, so we recognize it by height. Ours has 68 pixels.
+    ; there seems no way to filter for our own tooltip, so we recognize it by height. Ours has 68 or 80 pixels.
     WinGetPos, WX, WY, WW, WH, ahk_class tooltips_class32
-    if (DrawGridShowDistance AND ShowMeasuresAsToolTip AND WH = 68)
+    ;MsgBox,%WH%
+    if (DrawGridShowDistance AND ShowMeasuresAsToolTip AND (WH = 68 OR WH = 80))
     {
         WinGetPos, WX, WY, WW, WH, ahk_class tooltips_class32
         ShowMeasuresToolTip_X = %WX%
@@ -1690,11 +2013,210 @@ getAvgPixelGetColor( MX, MY, avg )
 }
 
 
+; ***************************************************************
+; *********** ACTION: Scroll with Middle Mouse button ***********
+; ***************************************************************
+;
+DoMButtonScroll:
+    If CheckIsWindowInList(WindowIgnoreList, WindowMatchStr)
+    {
+        SendEvent {Blind}{MButton down}
+        KeyWait MButton, U
+        SendEvent {Blind}{MButton up}
+        return
+    }
+ 
+    ; firefox.exe:    winid 0x120c46 ctl1 _MozillaCompositorWindowClass1_   ctl2 _0x503ba_    ctl3 _           WHndFmPt 0x120c46
+    ; notepad++.exe:  winid 0x80bc4  ctl1 _Scintilla1_                      ctl2 _0x1c01d6_   ctl3 0x1c01d6 _  WHndFmPt 0x0
+    ; (Rechner)     : winid 0x70d7e  ctl1 _ApplicationFrameInputSinkWindow1_ ctl2 _0x70d70_   ctl3 0xd0d48  _  WHndFmPt 0xd0d48
+    ; (Rechner Menu): winid 0x70d7e  ctl1 _ApplicationFrameInputSinkWindow1_ ctl2 _0x70d70_   ctl3 0xd0d48  _  WHndFmPt 0xd0d48
+    ; TOTALCMD64.EXE: winid 0x1a060c ctl1 _LCLListBox2_                     ctl2 _0x9c0e54_   ctl3 0x9c0e54 _  WHndFmPt 0x9c0e54
+    ; TOTALCMD64.EXE: winid 0x1a060c ctl1 _LCLListBox1_                     ctl2 _0x5308a0_   ctl3 0x5308a0 _  WHndFmPt 0x5308a0
+    ; TOTALCMD64.EXE: winid 0x3b0868 ctl1 __                                ctl2 __           ctl3 _           WHndFmPt 0x3b0868  (Lister)
+    ; WINWORD.EXE:    winid 0x3507e8 ctl1 __WwG1_                           ctl2 _0x1d0168_   ctl3 0x1d0168 _  WHndFmPt 0x0
+    ; WINWORD.EXE:    winid 0x3507e8 ctl1 _NetUIHWND1_                      ctl2 _0x3f05f6_   ctl3 0x3f05f6 _  WHndFmPt 0x0       (ribbon)
+    ; Taskmgr.exe:    winid 0x3810b8 ctl1 _DirectUIHWND1_                   ctl2 _0xb90032_   ctl3 0xb90032 _  WHndFmPt 0xb90032
+    ; Windows-Sichert:winid 0x10155a ctl1 _ApplicationFrameInputSinkWindow1_  ctl2 _0x21a7c_  ctl3 0x11a90 _   WHndFmPt 0x11a90
+    ; FoxitReader.exe:winid 0x115e6  ctl1 _ BCGPTabWnd:540000:8:10007:103 _   ctl2 _ 0x11620 _ctl3 0x11656 _   WHndFmPt 0x11656
+    ; StartMenuExperienceHost.exe: winid 0x9104ce ctl1 __                   ctl2 __           ctl3 __          WHndFmPt 0x9104ce
+    ; If (MBCtrlHnd = "") MBCtrlHnd := MBControl2 ; If (MBCtrlHnd = "") MBCtrlHnd := MBWinID  -> not scrolling: Firefox, Menue im Rechner, Startmenue, Windows-Sicherheit
+    ; If (  CtrlHnd = "")                                                 CtrlHnd :=   WinID  -> not scrolling: Menue im Rechner, Startmenue, Windows-Sicherheit
+    ; --> ctl2 not or rarely working --> use ctl3 if not empty --> use winid if ctl3 is empty
+    
+    MouseGetPos, MBScrollX,MBScrollY, MBWinID, MBCtrlHnd, 3
+    
+    ;WHndFmPt := Format("0x{:x}", DllCall("WindowFromPoint", int64, MBScrollY << 32 | MBScrollX) )
+    ;MouseGetPos,,,, MBControl1, 1
+    ;MouseGetPos,,,, MBControl2, 2
+    ;WinGet, t3, ProcessName, ahk_id %MBWinID%
+    ;ToolTip, %t3% : winid %MBWinID%   ctl1 _%MBControl1%_   ctl2 _%MBControl2%_   ctl3 _%MBCtrlHnd%_   WHndFmPt _%WHndFmPt%_
+    ;Clipboard := t3 ": winid " MBWinID  " ctl1 _ " MBControl1 " _   ctl2 _ " MBControl2 " _   ctl3 _ " MBCtrlHnd " _   WHndFmPt " WHndFmPt
+
+    If (MBCtrlHnd == "")
+        MBCtrlHnd := MBWinID
+
+    WinGetClass MBWinClass, ahk_id %MBCtrlHnd%
+    Clipboard := MBWinClass
+    
+    If ( BringWindowToFront )
+        WinActivate, ahk_id %MBWinID%
+
+    ; some applications (notepad, notepad++, ...) only take increments of (multiples of) 120.
+    ; if they get anything else, mouse wheel will not immediately react.
+    ; and when scrolling, they have the same spacing as a normal Send,WheelUp/Down events
+    ; Also, there are some applications (mostly Windows' new ApplicationFramework-Apps) which don't listen to WM_MOUSEWHEEL at all
+    ; --> for all of those, use Send instead of PostMessage,WM_MOUSEWHEEL
+    ;     No idea if it's possible to identify them - for now, use a manually defined list
+    
+    FocuslessScrollSendAsKey := 0 ; CheckIsWindowInList(WindowListScrollSendAsKey, WindowMatchStr)
+    
+    MouseHasMoved  := 0
+    SetTimer MButtonScrollLoop, 10
+    return
+
+DoMButtonScrollUp:
+    SetTimer, MButtonScrollLoop, off
+
+    if ( MouseHasMoved == 0)
+        MouseClick, Middle
+
+    MouseHasMoved := -1
+    return
+
+MButtonScrollLoop:
+    ; this check tries to work around occasionally loosing the DoMButtonScroll*Up* event
+    ; however, it seems there are still occasions where this happens???
+    ; i.e. MButton _is_ up, but we're still stuck in this loop
+    
+    SetTimer, MButtonScrollLoop, off
+    
+    If (GetKeyState("MButton", "P") == 0)
+    {
+        ;SetTimer, MButtonScrollLoop, off
+        MouseHasMoved := -2
+        return
+    }
+
+    MouseGetPos,MsX2,MsY2 ; Get the current mouse position.
+    MX2 := MsX2 - MBScrollX          ; Obtain an offset from the initial mouse position.
+    MY2 := MsY2 - MBScrollY
+    
+    If ( abs( MY2 ) > 1 )
+    {
+        If ( abs( MY2 ) > MButtonScrollMinMousespeedForFastAccel )
+            accel := MButtonScrollFastAccelerationMultiplier
+        Else
+            accel := 1
+
+        MouseMove, -MX2,-MY2, 0, R
+        
+        scrollOffset := round(-FocuslessScrollSpeed * accel *MY2 /MButtonScrollSpeedDivider)
+        FocuslessScroll( MBScrollX, MBScrolly, MBCtrlHnd, scrollOffset, FocuslessScrollSendAsKey )
+
+        MouseHasMoved := 1
+    }
+;Tooltip, % "SS" A_Now " MsY2:" MsY2 " MBScrollY:" MBScrollY "  MY2:" MY2
+
+    SetTimer MButtonScrollLoop, 10
+    
+    return
+
+
+; *******************************************************************************************************************************
+; *************  ACTION: Send scroll events to window under mouse cursor, even if window is not active (shimanov, scoox) ********
+; *******************************************************************************************************************************
+
+DoFocuslessScrollUp:
+    If CheckIsWindowInList(WindowIgnoreList, WindowMatchStr)
+    {
+        SendEvent {Blind}{WheelUp}
+        return
+    }
+    
+    MouseGetPos, m_x, m_y, WinID, CtrlHnd, 3
+
+    If(CtrlHnd = "")
+        CtrlHnd := WinID
+
+    FocuslessScrollSendAsKey := 0 ; CheckIsWindowInList(WindowListScrollSendAsKey, WindowMatchStr)
+    FocuslessScroll( m_x, m_y, CtrlHnd, FocuslessScrollSpeed, FocuslessScrollSendAsKey )
+    return
+
+DoFocuslessScrollDown:
+    If CheckIsWindowInList(WindowIgnoreList, WindowMatchStr)
+    {
+        SendEvent {Blind}{WheelDown}
+        return
+    }
+    MouseGetPos, m_x, m_y, WinID, CtrlHnd, 3
+
+    If(CtrlHnd = "")
+        CtrlHnd := WinID
+        
+    FocuslessScrollSendAsKey := 0 ; CheckIsWindowInList(WindowListScrollSendAsKey, WindowMatchStr)
+    FocuslessScroll( m_x, m_y, CtrlHnd, -FocuslessScrollSpeed, FocuslessScrollSendAsKey )
+    return
+    
+FocuslessScroll(MouseX, MouseY, CtrlHnd, Scrollstep, SendAsKey)
+{
+    static remainingStep := 0
+    global FocuslessScrollSpeed
+    ;If (SendAsKey)
+    ;;IfWinExist ahk_id %CtrlHnd% ahk_group FocuslessScroll_SendClick
+    ;{
+    ;    ;ControlClick sometimes seems to overload explorer.exe, requiring to kill and restart it
+    ;    ;But so does SendEvent -> seems something else is wrong here -> TODO
+         ;MouseClick,WheelUp,,,n
+    ;    ;SendInput sometimes make the window stop responding to more commands. maybe queue overflow and then missing the Button Up?
+    ;    ;Tooltip, % "SendEvent " CtrlHnd
+    ;    
+        n := round(abs(Scrollstep) /FocuslessScrollSpeed)
+        
+        if (n == 0)
+        {
+            remainingStep += Scrollstep
+            if (remainingStep >= 120)
+            {
+                n := 1
+                remainingStep -= 120
+            }
+            if (remainingStep <= -120)
+            {
+                n := 1
+                remainingStep += 120
+            }
+        }
+        else
+            remainingStep := 0
+        
+        ;tooltip, % HH24MISS A_Now "  " Scrollstep " " (abs(Scrollstep) /FocuslessScrollSpeed) ".." n "   rem:" remainingStep
+       
+        if (ScrollStep < 0)
+            Loop %n%
+                SendInput {Blind}{WheelDown}
+        if (ScrollStep > 0)
+            Loop %n%
+                SendInput {Blind}{WheelUp}
+    ;}
+    ;else
+    {
+        wParam := Scrollstep << 16
+        If(GetKeyState("Shift","P"))
+            wParam := wParam | 0x4
+        If(GetKeyState("Ctrl","P"))
+           wParam := wParam | 0x8
+        ;PostMessage, 0x20A, wParam, ((MouseY << 16) | (MouseX &0xFFFF)),, ahk_id %CtrlHnd%
+        
+    }
+    Sleep,15
+}
+
+
 ; ****************************************************************************************************************
 ; *************  ACTION Helper: Quickly position and resize window on edge/grid during Move/Resize ***************
 ; ****************************************************************************************************************
 
-QuickPositionWindowOnEdge(ByRef X2, ByRef Y2, ByRef W2, ByRef H2)
+QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2, WinOffX, WinOffY, WinOffW, WinOffH)
 {
     ; Resize&Snapping Areas:
     ; Off   X,Y  W,H  QkSize X,Y    W,H  Off_l
@@ -1727,16 +2249,26 @@ QuickPositionWindowOnEdge(ByRef X2, ByRef Y2, ByRef W2, ByRef H2)
     ;  middle:      0.66
     ;  inner:       0.333
 
-    GetCurrentScreenBoarders(scrLeft, scrRight, scrTop, scrBottom)
+    GetCurrentScreenBorders(MouseX, MouseY, scrLeft, scrRight, scrTop, scrBottom)
+    
+    ; Mouse must be inside borders -> skip taskbar, DPI errors, ...
+    if (MouseX < scrLeft)
+        MouseX := scrLeft
+    if (MouseX >= scrRight)
+        MouseX := scrRight -1
+    if (MouseY < scrTop)
+        MouseY := scrTop
+    if (MouseY >= scrBottom)
+        MouseY := scrBottom -1
+    
     scrWidth  := scrRight - scrLeft
     scrHeight := scrBottom - scrTop
-    MouseGetPos, WinCenterX,WinCenterY
 
-    WinCenterXl := WinCenterX - scrLeft
-    WinCenterYl := WinCenterY - scrTop
+    WinCenterX := MouseX - scrLeft
+    WinCenterY := MouseY - scrTop
     
-    OffX := Floor( (16 * WinCenterXl) / scrWidth)  ; floor divide to obtain OffX 0..15
-    OffY := Floor( (16 * WinCenterYl) / scrHeight) ; floor divide to obtain OffY 0..15
+    OffX := Floor( (16 * WinCenterX) / scrWidth)  ; floor divide to obtain OffX 0..15
+    OffY := Floor( (16 * WinCenterY) / scrHeight) ; floor divide to obtain OffY 0..15
     
     OffX_l := OffX + 1
     OffY_l := OffY + 1
@@ -1748,24 +2280,24 @@ QuickPositionWindowOnEdge(ByRef X2, ByRef Y2, ByRef W2, ByRef H2)
     M8mOffX_l := 8 - OffX_l
     M8mOffY_l := 8 - OffY_l
     
-    if (     abs(WinCenterXl - scrWidth /2) < scrWidth /16*0.33  
-         AND abs(WinCenterYl - scrHeight/2) < scrHeight/16*0.33  )            ; is the inner center
+    if (     abs(WinCenterX - scrWidth /2) < scrWidth /16*0.33  
+         AND abs(WinCenterY - scrHeight/2) < scrHeight/16*0.33  )            ; is the inner center
     { 
         X2 := scrLeft + 0.33 * scrWidth
         Y2 := scrTop  + 0.33 * scrHeight
         W2 := scrWidth  * 0.33
         H2 := scrHeight * 0.33
     }
-    else if (     abs(WinCenterXl - scrWidth /2) < scrWidth /16*0.66  
-              AND abs(WinCenterYl - scrHeight/2) < scrHeight/16*0.66  )       ; is the middle center
+    else if (     abs(WinCenterX - scrWidth /2) < scrWidth /16*0.66  
+              AND abs(WinCenterY - scrHeight/2) < scrHeight/16*0.66  )       ; is the middle center
     {
         X2 := scrLeft + 0.25 * scrWidth
         Y2 := scrTop  + 0.25 * scrHeight
         W2 := scrWidth  * 0.5
         H2 := scrHeight * 0.5
     }
-    else if (     abs(WinCenterXl - scrWidth /2) < scrWidth /16*1 
-              AND abs(WinCenterYl - scrHeight/2) < scrHeight/16*1  )       ; is the outer center
+    else if (     abs(WinCenterX - scrWidth /2) < scrWidth /16*1 
+              AND abs(WinCenterY - scrHeight/2) < scrHeight/16*1  )       ; is the outer center
     {
         X2 := scrLeft + 0.382*0.382 * scrWidth
         Y2 := scrTop  + 0.382*0.382 * scrHeight
@@ -1795,45 +2327,15 @@ QuickPositionWindowOnEdge(ByRef X2, ByRef Y2, ByRef W2, ByRef H2)
         else
             Y2 := scrTop +  scrHeight - H2
     }
-}
-
-; ***********************************************************************************************************
-; *************  ACTION: Scroll windows under mouse cursor, even if not active (shimanov, scoox) ********
-; ***********************************************************************************************************
-
-DoFocuslessScrollUp:
-    FocuslessScroll( FocuslessScrollSpeed )
-    return
-DoFocuslessScrollDown:
-    FocuslessScroll( -FocuslessScrollSpeed )
-    return
     
-FocuslessScroll(Scrollstep)
-{
-    Critical
-    MouseGetPos, m_x, m_y, WinID, Control1
-    MouseGetPos, m_x, m_y, , Control2, 2
-    MouseGetPos,,,, Control3, 3
-    ;TrayTip,, winid %WinID%   ctl1 _%Control1%_   ctl2 _%Control2%_   ctl3 _%Control3%_
-
-    wParam := Scrollstep << 16
-    If(GetKeyState("Shift","P"))
-        wParam := wParam | 0x4
-    If(GetKeyState("Ctrl","P"))
-        wParam := wParam | 0x8
-
-    If(Control2 = "")
-    {
-        PostMessage, 0x20A, wParam, (m_y << 16) | (m_x &0xFFFF),, ahk_id %WinID%  ; SendMessage does not work for TotalCommander Lister
-        ;SendMessage, 0x1, wParam, (m_y << 16) | (m_x &0xFFFF),, ahk_id %WinID%
-    }
-    Else
-    {
-        If(Control2 != Control3)
-            SendMessage, 0x20A, wParam, (m_y << 16) | (m_x &0xFFFF),, ahk_id %Control3%
-        Else
-            SendMessage, 0x20A, wParam, (m_y << 16) | (m_x &0xFFFF),, ahk_id %Control2%
-    }
+    ; extend coordinates to return the extended window position and size
+    X2 := X2 + WinOffX
+    Y2 := Y2 + WinOffY
+    W2 := W2 + WinOffW
+    H2 := H2 + WinOffH
+    
+    if (X2 == "" or Y2 == "" or W2 == "" or H2 == "")
+        MsgBox, empty x/y/w/h: %X2%, %Y2%, %W2%, %H2%
 }
 
 
@@ -1842,22 +2344,171 @@ FocuslessScroll(Scrollstep)
 ; *******************************************************
 
 ; get current screen boarders for monitor where mouse cursor is
-GetCurrentScreenBoarders(ByRef CurrentScreenLeft, ByRef CurrentScreenRight, ByRef CurrentScreenTop, ByRef CurrentScreenBottom)
+GetCurrentScreenBorders(Mouse_X, Mouse_Y, ByRef CurrentScreenLeft, ByRef CurrentScreenRight, ByRef CurrentScreenTop, ByRef CurrentScreenBottom)
 {
-    ; get current screen boarders for snapping, do this within the loop to allow snapping an all monitors without releasing button
-    MouseGetPos,Mouse_X,Mouse_Y
+    ; AHK or (most probably) Windows has a bug that there might be a pixel offset of Mouse vs Monitor when using multimonitor with different DPI settings
+    ; Also, when moving a SYSTEM_AWARE window, mouse pointer may still return once in old DPI coordinates (which also results in an impossible position)
+    ; -> return previous screen borders instead
+    static LastScreenLeft   := 0
+    static LastScreenRight  := 0
+    static LastScreenTop    := 0
+    static LastScreenBottom := 0
+    
+    found := 0
+    str := ""
+    ; get current screen boarders for snapping, do this within the loop to allow snapping on all monitors without releasing button
     SysGet, MonitorCount, MonitorCount
     Loop,  %MonitorCount%
     {
         SysGet, MonitorWorkArea, MonitorWorkArea, %A_Index%
         if (Mouse_X >= MonitorWorkAreaLeft) AND (Mouse_X <= MonitorWorkAreaRight) AND (Mouse_Y >= MonitorWorkAreaTop) AND (Mouse_Y <= MonitorWorkAreaBottom)
         {
-            CurrentScreenLeft   := MonitorWorkAreaLeft
-            CurrentScreenRight  := MonitorWorkAreaRight
-            CurrentScreenTop    := MonitorWorkAreaTop
-            CurrentScreenBottom := MonitorWorkAreaBottom
+            CurrentScreenLeft   := LastScreenLeft   := MonitorWorkAreaLeft
+            CurrentScreenRight  := LastScreenRight  := MonitorWorkAreaRight
+            CurrentScreenTop    := LastScreenTop    := MonitorWorkAreaTop
+            CurrentScreenBottom := LastScreenBottom := MonitorWorkAreaBottom
+            found := 1
         }
     }
+    if (found == 0) {
+        CurrentScreenLeft   := LastScreenLeft
+        CurrentScreenRight  := LastScreenRight
+        CurrentScreenTop    := LastScreenTop
+        CurrentScreenBottom := LastScreenBottom
+        ;ToolTip, %A_TickCount% No monitor work area found`, using last one. Mouse: %Mouse_X%/%Mouse_Y% %str% 
+    }
+}
+
+; **********************
+; DPI Awareness functions
+
+;   ThreadDpiAwarenessContext = -3:
+;      + required for Snap to use correct screenborder on screens with DPI != 96 DPI
+;      + correct window size spanning two monitors with different DPIs, but only for apps that support per-monitor-dpi-awareness
+;      - wrong window size spanning two monitors with different DPIs for apps that don't support per-monitor-dpi-awareness
+;   Default ThreadDpiAwarenessContext:
+;      - screenborders, are completely off (wrong offset, as DwmGetWindowAttribute returns physical coordinates for system-aware apps)
+;      - wrong window size spanning two monitors with different DPIs, but only for apps that use per-monitor-dpi-awareness
+;      + correct window size spanning two monitors with different DPIs for apps that don't use per-monitor-dpi-awareness
+;
+; -> (-3) Only required when using borderless snapping. when snapping with borders, we don't care.
+;    (-3) Only available starting from Win 10.0.14393 (Windows 10 build 14393, aka version 1607)
+
+; https://www.autohotkey.com/boards/viewtopic.php?f=82&t=118228
+; https://learn.microsoft.com/en-us/windows/win32/hidpi/dpi-awareness-context
+;DPI_AWARENESS_CONTEXT_UNAWARE := -1
+;DPI_AWARENESS_CONTEXT_SYSTEM_AWARE := -2
+;DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE := -3
+;DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 := -4
+;DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED := -5
+; https://learn.microsoft.com/en-us/windows/win32/api/windef/ne-windef-dpi_awareness
+;DPI_AWARENESS_INVALID := -1
+;DPI_AWARENESS_UNAWARE := 0
+;DPI_AWARENESS_SYSTEM_AWARE := 1
+;DPI_AWARENESS_PER_MONITOR_AWARE := 2
+
+; set default DPI awareness (e.g. for ruler) to PER_MONITOR
+; AHK default is DPI_AWARENESS_CONTEXT_SYSTEM_AWARE (-2), but we need MONITOR_AWARE
+SetDefaultDpiAwarenessContext()
+{
+    static DPI_AWARENESS_CONTEXT_SYSTEM_AWARE := -2
+    static DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE := -3
+    DllCall("SetThreadDpiAwarenessContext", "ptr", DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, "ptr")
+}
+
+; set DPI awareness context of this script to match DPI awareness of target window
+SetWindowSpecificDpiAwarenessContext(wndDpiAwareness)
+{
+    static DPI_AWARENESS_CONTEXT_SYSTEM_AWARE := -2
+    static DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE := -3
+    static DPI_AWARENESS_UNAWARE := 0
+    static DPI_AWARENESS_SYSTEM_AWARE := 1
+    If (wndDpiAwareness == DPI_AWARENESS_SYSTEM_AWARE || wndDpiAwareness == DPI_AWARENESS_UNAWARE)
+        DllCall("SetThreadDpiAwarenessContext", "ptr", DPI_AWARENESS_CONTEXT_SYSTEM_AWARE, "ptr")
+}
+
+; restore DPI awareness context of this script (only if it was changed before to match DPI awareness of target window)
+RestoreWindowSpecificDpiAwarenessContext(wndDpiAwareness)
+{
+    static DPI_AWARENESS_CONTEXT_SYSTEM_AWARE := -2
+    static DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE := -3
+    static DPI_AWARENESS_UNAWARE := 0
+    static DPI_AWARENESS_SYSTEM_AWARE := 1
+    If (wndDpiAwareness == DPI_AWARENESS_SYSTEM_AWARE || wndDpiAwareness == DPI_AWARENESS_UNAWARE)
+        DllCall("SetThreadDpiAwarenessContext", "ptr", DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, "ptr")
+}
+
+; get offset for (invisible) frame around window
+;
+;    Note:
+;    There are some MS Windows quirks when using a multi-monitor setup with different per-monitor DPI settings:
+;    Windows' MoveWin wrongly increases the window size if a window spans two screens with different DPI settings
+;    and AHK's DPI Awareness context setting does not match the client window DPI awareness setting.
+;    This mixup already happens when even just the invisible part of the window frame is on the other screen.
+;    So we need to set the appropriate mode in AHK depending on the target window prior to using WinGetPos/WinMove/...
+;    More: https://mariusbancila.ro/blog/2021/05/19/how-to-build-high-dpi-aware-native-desktop-applications/
+;    
+;    Then again, DWMWA_EXTENDED_FRAME_BOUNDS always returns (unscaled) screen coordinates,
+;    so we get invalid offsets for DPI_AWARENESS_CONTEXT_SYSTEM_AWARE and DPI_AWARENESS_SYSTEM_AWARE client windows
+;    It works however for DPI_AWARENESS_SYSTEM_AWARE client windows when AHK is in DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE mode
+;
+;    --> so we have to get offsets before adjusting the DPI context inside the Move or Resize actions
+;
+WinGetOffset(ByRef OffX, ByRef OffY, ByRef OffW, ByRef OffH, hWindow)
+{
+    ; In Windows Vista and later, the Window Rect (WinGetPos) now includes the area occupied by the drop shadow.
+    ; The offset values contain the difference to the actually shown window.
+    ; Idea and some code from KaFu, just_me, jballi and
+    ; Descolada for DPI Scaling stuff (https://www.autohotkey.com/boards/viewtopic.php?t=121040)
+
+    ; X/Y/W/H + OffX/Y/W/H = the coordinates that must set e.g. in WinMove to enlarge the window correctly
+    ; X/Y/W/H - OffX/Y/W/H = the visible part of the (smaller) currently shown window (without the extended frame border)
+    
+    OffX := 0
+    OffY := 0
+    OffW := 0
+    OffH := 0
+    
+    ; Calculate offset to compensate invisible window frame
+    ; Note that unlike the Window Rect, the DWM Extended Frame Bounds are not adjusted for DPI when we are in DPI_AWARENESS_CONTEXT_SYSTEM_AWARE
+
+    static DWMWA_EXTENDED_FRAME_BOUNDS := 9
+    static S_OK := 0
+    VarSetCapacity( rect, 24, 0 )
+    dwmrc := DllCall("dwmapi\DwmGetWindowAttribute"
+                     ,"Ptr", hWindow
+                     ,"UInt", DWMWA_EXTENDED_FRAME_BOUNDS
+                     ,"Ptr", &rect
+                     ,"UInt", 16)
+
+    if (dwmrc == S_OK)
+    {
+        x1 := left := NumGet( rect, 0, "Int" ) 
+        y1 := top  := NumGet( rect, 4, "Int" )
+        right      := NumGet( rect, 8, "Int" )
+        bottom     := NumGet( rect, 12, "Int" )
+        w1 := right  - left
+        h1 := bottom - top
+        
+        WinGetPos, X, Y, W, H, ahk_id %hWindow%
+
+        OffX := X - x1
+        OffY := Y - y1
+        OffW := W - w1
+        OffH := H - h1
+    }
+    return
+    
+    ;wndDpiAwareness := GetWindowDpiAwareness(hWindow)
+    ;Tooltip, hwnd %hWindow% dpiAwareness(%wndDpiAwareness%) dpiX/Y:%dpiX%/%dpiY% x %X%-(%OffX%)=%x1%(xs %xs%/%xs2%) y %Y%-(%OffY%)=%y1%(ys %ys%/%ys2%) w %W%-(%OffW%)=%w1%(ws %ws%/%ws2%) h %H%-(%OffH%)=%h1%(hs %hs%/%hs2%)
+    ;Tooltip, hwnd %hWindow%  x %X%-(%OffX%)=%x1% y %Y%-(%OffY%)=%y1% w %W%-(%OffW%)=%w1% h %H%-(%OffH%)=%h1%
+}
+
+GetWindowDpiAwareness(hWindow)
+{
+    wndDpiAwarenessCtx := DllCall("GetWindowDpiAwarenessContext", "Ptr",hWindow)
+    wndDpiAwareness    := DllCall("GetAwarenessFromDpiAwarenessContext", "Int",wndDpiAwarenessCtx)
+    return wndDpiAwareness
 }
 
 ; Draw rectangular frame on screen - set attributes
@@ -1865,7 +2516,7 @@ DrawRectFrame_Prepare()
 {
     global
     Loop, 4 {
-        Gui, %A_Index%: -Caption +ToolWindow +AlwaysOnTOp +OwnDialogs %DrawGridGUIOptions%
+        Gui, %A_Index%: -Caption +ToolWindow +AlwaysOnTOp +OwnDialogs -DPIScale %DrawGridGUIOptions%
         Gui, %A_Index%: Color, %DrawGridColour%
     }
 }
@@ -1873,10 +2524,15 @@ DrawRectFrame_Prepare()
 DrawRectFrame_Show( KDE_WinX2, KDE_WinY2, KDE_WinW2, KDE_WinH2 )
 {
     global
-    Gui, 1: Show, % "x" KDE_WinX2-2 " y" KDE_WinY2-2 " w" DrawGridWidth+1 " h" KDE_WinH2     " NoActivate"
-    Gui, 2: Show, % "x" KDE_WinX2-2 " y" KDE_WinY2-2 " w" KDE_WinW2     " h" DrawGridWidth+1 " NoActivate"
-    Gui, 3: Show, % "x" KDE_WinX2+KDE_WinW2-2 " y" KDE_WinY2-2 " w" DrawGridWidth+1 " h" KDE_WinH2     " NoActivate"
-    Gui, 4: Show, % "x" KDE_WinX2-2 " y" KDE_WinY2+KDE_WinH2-2 " w" KDE_WinW2     " h" DrawGridWidth+1 " NoActivate"
+    X3 := KDE_WinX2 -2  ; +KDE_WinOffFrameX
+    Y3 := KDE_WinY2 -2  ; +KDE_WinOffFrameY
+    W3 := KDE_WinW2     ; +KDE_WinOffFrameW
+    H3 := KDE_WinH2     ; +KDE_WinOffFrameH
+    
+    Gui, 1: Show, % "x" X3    " y" Y3    " w" DrawGridWidth+1 " h" H3     " NoActivate"
+    Gui, 2: Show, % "x" X3    " y" Y3    " w" W3              " h" DrawGridWidth+1 " NoActivate"
+    Gui, 3: Show, % "x" X3+W3 " y" Y3    " w" DrawGridWidth+1 " h" H3     " NoActivate"
+    Gui, 4: Show, % "x" X3    " y" Y3+H3 " w" W3              " h" DrawGridWidth+1 " NoActivate"
 }
 ; Draw rectangular frame on screen - hide frame
 DrawRectFrame_Cancel()
@@ -1887,14 +2543,90 @@ DrawRectFrame_Cancel()
     ;DllCall("RedrawWindow", "Uint", curwin_id , "Uint", 0, "Uint", 0, "Uint", 0x81)    ; Workaround for WinSet, Redraw,, ahk_id %curwin_id% (didn't work for Gimp)
 }
 
-; returns 1 if Window at current Mouse position is in Window Ignore list
-CheckIsWindowInIgnoreList(WindowIgnoreList)
+; WindowList[in]: a comma-separated list of windows used for lookup
+; WindowMatchStr[out]: the current window match string used during lookup
+; returns 1 if Window at current Mouse position is in WindowList
+
+CheckIsWindowInList(ByRef WindowList, ByRef WindowMatchStr)
 {
     MouseGetPos,,,curwin_id
     WinGet currentwinname, ProcessName, ahk_id %curwin_id%
-    res := (InStr( WindowIgnoreList, currentwinname, CaseSensitive = false ) != 0)
+
+    ; If running as admin, WinGet sometimes returns an empty ProcessName. Class name is ok though
+    if (currentwinname == "" || currentwinname == "explorer.exe" || currentwinname == "ApplicationFrameHost.exe")
+    {
+        WinGetClass currentwinclass, ahk_id %curwin_id%
+        currentwinname := currentwinname . "/" . currentwinclass
+        
+        ; if we have these new windows apps, we also need the title to identify the app
+        if (currentwinclass == "ApplicationFrameWindow")
+        {
+            WinGetTitle currentwintitle, ahk_id %curwin_id%
+            currentwinname := currentwinname . "/" . currentwintitle
+        }
+    }
+    WindowMatchStr := currentwinname . ","
+    
+    res := (InStr( WindowList, WindowMatchStr, CaseSensitive = false ) != 0)
     return res
 }
+
+; returns 1 if we are running in a remote session
+;CheckIsRunningRemote()
+;{
+;    static SM_REMOTECONTROL := 8193
+;    static SM_REMOTESESSION := 4096
+;
+;    SysGet, isRemote1, % SM_REMOTECONTROL
+;    SysGet, isRemote2, % SM_REMOTESESSION
+;
+;    MsgBox, % "remoteControl=" isRemote1 "  remoteSession=" isRemote2
+;    return (isRemote1 OR isRemote2)
+;}
+
+
+; Set DPI scaling value of monitor
+;
+;    MsgBox 'New scale: ' . SetPrimaryMonitorScaling(150) 
+;
+;    info: https://is.gd/c10siw
+;          https://is.gd/zFERYq
+;    possible values 100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500
+; by teadrinker
+;SetPrimaryMonitorScaling(dpivalue)
+;{
+;
+;    static SPI_GETLOGICALDPIOVERRIDE := 0x009E
+;         , SPI_SETLOGICALDPIOVERRIDE := 0x009F
+;         , SPIF_UPDATEINIFILE := 0x00000001
+;         , MONITOR_DEFAULTTOPRIMARY := 0x00000001
+;         , ScaleValues := [100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500]
+;
+;    found := false
+;    for k, v in ScaleValues {
+;        continue
+;    } until value = v && found := true
+;    if !found {
+;        throw ValueError('Incorrect value: ' . value . '. Allowed values: 100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500')
+;    }
+;    if !DllCall('SystemParametersInfo', 'UInt', SPI_GETLOGICALDPIOVERRIDE, 'Int', 0, 'IntP', &v := value, 'UInt', 0) {
+;        throw OSError('SPI_GETLOGICALDPIOVERRIDE unsupported')
+;    }
+;    if !recommendedScaling := ScaleValues[1 - v] {
+;        throw OSError('Something wrong')
+;    }
+;    s := r := 0
+;    for k, v in ScaleValues {
+;        (v = value && s := k)
+;        (v = recommendedScaling && r := k)
+;    } until s && r
+;    if !DllCall('SystemParametersInfo', 'UInt', SPI_SETLOGICALDPIOVERRIDE, 'Int', s - r, 'Ptr', 0, 'UInt', SPIF_UPDATEINIFILE) {
+;        throw OSError('Failed to set new scale factor')
+;    }
+;    hMon := DllCall('MonitorFromWindow', 'Ptr', 0, 'UInt', MONITOR_DEFAULTTOPRIMARY, 'Ptr')
+;    DllCall('Shcore\GetScaleFactorForMonitor', 'Ptr', hMon, 'UIntP', &scale := 0)
+;    return scale
+;}
 
 ; returns the smaller of two values
 min( a, b )
@@ -1927,20 +2659,20 @@ SetMouseCursorDefault()
 ; save current window state to allow restore on Escape
 SaveOriginalWindowState()
 {
-    global orig_WinID,orig_isMax, orig_WinX,orig_WinY,orig_WinW,orig_WinH, orig_MouseX, orig_MouseY
+    global orig_WinID,orig_isMax, orig_WinX,orig_WinY,orig_WinW,orig_WinH
 
     MouseGetPos, ,,orig_WinID
     WinGet,    orig_isMax,MinMax,ahk_id %orig_WinID%
     WinGetPos, orig_WinX,orig_WinY,orig_WinW,orig_WinH,ahk_id %orig_WinID%
-    MouseGetPos, orig_MouseX,orig_MouseY
 
+    ; catch Escape hotkey to block client apps taking it
     Hotkey, !Escape, On
     Hotkey, Escape,  On
 }
 ; restore saved window state on Escape
 RestoreOriginalWindowState()
 {
-    global orig_WinID,orig_isMax, orig_WinX,orig_WinY,orig_WinW,orig_WinH, orig_MouseX, orig_MouseY
+    global orig_WinID,orig_isMax, orig_WinX,orig_WinY,orig_WinW,orig_WinH
 
     WinMove ahk_id %orig_WinID%,, orig_WinX,orig_WinY,orig_WinW,orig_WinH
     WinGet, current_isMax,MinMax,ahk_id %orig_WinID%
@@ -1949,6 +2681,7 @@ RestoreOriginalWindowState()
     if ! current_isMax AND orig_isMax
         WinMaximize, ahk_id %orig_WinID%
 }
+
 ; returns readable name for hotkey
 strname( key )
 {
@@ -1997,7 +2730,9 @@ CatchGridButtonHotkey()
     global ; DrawGridOverlay_Mouse
 
     if ( DoubleAltShortcuts )
+    {
         Hotkey, ~%DoubleKey_Hotkey2%, Off  ; stop the double-key from interfering with colour sampler
+    }
 
     Hotkey, %DrawGridOverlay_Mouse%, CatchGridButton, On
     Hotkey, ^%DrawGridOverlay_Mouse%, CatchGridButtonCtrl, On
@@ -2086,7 +2821,6 @@ SpecialCharactersLbl_15:
 
 
 ;ProductName := "KDE Mover-Sizer"
-;ProductVersion := 2.9
+;ProductVersion := 2.11
 ;ProductPublisher := "corz.org"
 ;ProductWebsite := "http://corz.org/windows/software/accessories/KDE-resizing-moving-for-Windows.php"
-
