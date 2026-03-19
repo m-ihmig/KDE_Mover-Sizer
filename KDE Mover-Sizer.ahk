@@ -27,6 +27,7 @@
 ;                       Added: Create and remove shortcut link in startup folder
 ;                       Added: optional match class name in IgnoreWindow list (e.g. ignore move/resize when Alt+clicking on Desktop)
 ;                       Fixed: Allow click with active Alt+Tab task switcher for Win10 and Win11
+;                       Fixed: using Alt occasionally pauses AHK, resulting in a hanging WinMove during Quick-Position
 ;                       Fixed: Make script work for apps from Windows' apps framework that don't have a processname (e.g Calculator)
 ;   Sep  10, 2014:      Added option to hide tray icon - a message will appear first, warning you that you have no easy way to shutdown KMS
 ;   Jan  20, 2014:      Added: (Focusless) scroll when holding middle mouse button (e.g. for pointing sticks). Don't move to generate middle click
@@ -1021,7 +1022,7 @@ DoMovingWindowMinimize:
         PostMessage, 0x112,0xf020,,,ahk_id %KDE_id%
 
         DoubleAlt := false
-        Send {Blind}{%DoubleKey_hotkey2%}
+        ;Send {Blind}{%DoubleKey_hotkey2%}
 
         return
     }
@@ -1040,6 +1041,7 @@ DoMovingWindowMinimize:
     if ( DoubleAltShortcuts )
     {
         Hotkey, ~%DoubleKey_Hotkey2%, Off
+        Hotkey, %DoubleKey_Hotkey2%, OnDoubleKeyOff, On
     }
 
  
@@ -1194,6 +1196,7 @@ DoMovingWindowMinimize:
     ; reenable DoubleKey_Hotkey
     if ( DoubleAltShortcuts )
     {
+        Hotkey, %DoubleKey_Hotkey2%, Off
         Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
     }
     return
@@ -1250,6 +1253,7 @@ DoResizingWindowMaximize:
     if ( DoubleAltShortcuts )
     {
         Hotkey, ~%DoubleKey_Hotkey2%, Off
+        Hotkey, %DoubleKey_Hotkey2%, OnDoubleKeyOff, On
     }
 
     ; Get the initial mouse position and window id, and
@@ -1587,6 +1591,7 @@ DoResizingWindowMaximize:
     ; reenable DoubleKey_Hotkey
     if ( DoubleAltShortcuts )
     {
+        Hotkey, %DoubleKey_Hotkey2%, Off
         Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
     }
 
@@ -1648,6 +1653,7 @@ DoToggleMaximize_Up:
 OnDoubleKey:
     if ( DoubleAltShortcuts )
         DoubleAlt := A_PriorHotKey = "~"DoubleKey_hotkey2 AND A_TimeSincePriorHotkey < DoubleModifierKey_MaxDelay_ms
+OnDoubleKeyOff:
     Sleep 0
     if DoubleKey_isAltGr
         KeyWait RAlt
@@ -2732,6 +2738,7 @@ CatchGridButtonHotkey()
     if ( DoubleAltShortcuts )
     {
         Hotkey, ~%DoubleKey_Hotkey2%, Off  ; stop the double-key from interfering with colour sampler
+        Hotkey, %DoubleKey_Hotkey2%, OnDoubleKeyOff, On
     }
 
     Hotkey, %DrawGridOverlay_Mouse%, CatchGridButton, On
@@ -2748,6 +2755,7 @@ DisableGridButtonHotkey()
     Hotkey, +%DrawGridOverlay_Mouse%, Off
     Hotkey, ^+%DrawGridOverlay_Mouse%, Off
 
+    Hotkey, %DoubleKey_Hotkey2%, Off
     Init_SetHotkeyHandler()     ; reenable original hotkeys
 
 }
@@ -2815,8 +2823,8 @@ SpecialCharactersLbl_15:
     ;KeyWait F9, U
     ;SendEvent {Blind}{F9 up}
     return
-~^!+MButton::
-    return
+;~^!+MButton::
+;    return
 
 
 
