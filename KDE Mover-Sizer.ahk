@@ -1,4 +1,4 @@
-;   Internationally known as "KDE Mover-Sizer"                               Version 2.11h
+;   Internationally known as "KDE Mover-Sizer"                               Version 2.11i
 ;
 ;   http://corz.org/windows/software/accessories/KDE-resizing-moving-for-Windows.php
 
@@ -19,12 +19,15 @@
 
 ; Known issues:
 ; - MButton Drag Scrolling is not working on new windows applications based on ApplicationFrameHost.exe (such Calculator or certain setting pages)
-;   For some reason, they only react on SendEvent{Wheel}, but not on PostMessage WM_MOUSEHWHEEL
-; - With disabled "Showing window contents while dragging", dragging DPI_AWARENESS_PER_MONITOR_AWARE windows between monitors with different DPIs results in wrong size.
-;   Reason is that when moving by frame, Windows rescales them only after the first WinMove. A fix would be to check if the window was dragged to a monitor with a different DPI setting,
-;   and if so, sleep and then do another WinMove. Until then, just press Control (WindowToFront) hotkey to force windows to recalculate the window size
+;   For some reason, they only react on SendEvent{Wheel}, but not on PostMessage WM_MOUSEVWHEEL
+; - Resizing SYSTEM_AWARE across monitors with different DPIs wrongly moves the windows origin. To fix this, we would need to scale the origin coordinates as well
+
+; ToDo:
+; - Add option to disable Horizontal dragging
 
 ;   Itstory:
+;   Feb  25, 2026:      Added: Correct scaling for moving PER_MONITOR_AWARE between monitors with different DPI.
+;                              Hint if "Showing window contents while dragging" is disabled: press Control (WindowToFront) hotkey to force window update on current position
 ;   Feb  27, 2025:      Added: Horizontal drag-scrolling (Change DragScrollIntervalDirectionChange_us to change how easy vertical and horizontal drag-scrolling can be switched)
 ;                       Added: Finer grid for QuickPosition-to-grid (16x16->24x24)
 ;                       Added: Press "Control" during Move/Resize to bring currently dragged Window to foreground
@@ -128,6 +131,11 @@
 ;   NOTE: If your application wants the Alt key for hotkey modifiers, use Alt+Win+Key for that.
 ;   It's quite easy once you do it a few times, simply roll your thumb and finger on and off.
 
+
+;***********************
+; Prepare Default configuration and do basic version checks
+;
+
 #SingleInstance Force
 #NoEnv                     ; Recommended for performance and compatibility with future AutoHotkey releases. (jlr)
 #MaxHotkeysPerInterval 200 ; Avoid warning when mouse wheel turned very fast
@@ -145,7 +153,8 @@ MinVersion := "1.1.20.00"
 MaxVersion := "1.1.26.01"
 ; Min Version is required for DragScroll to work.
 ; Max Version: For later versions I could not get that nested DoubleAlt/Alt+MButton/Alt-Up to work correctly with masking Menus.
-;              Didn't find a single solution for later versions, that worked for Notepad, Firefox and Console at the same time:
+;              Didn't find a single solution for later versions, that worked for Notepad, Firefox and Console at the same time.
+;              This is the (unwanted) behaviour for newer AHK versions:
 ;              When releasing LButton on Firefox during Quick-Position, the Menu is still selected,
 ;              because scripted LControl down+up was always sent _after Alt+up with *Alt Up:: hotkey.
 ;              I didn't find a way to reverse this without destroying the Double-Alt stuff.
@@ -153,13 +162,16 @@ MaxVersion := "1.1.26.01"
 ;              which only works if I release Alt quickly after the mouse button. If I keep it pressed, Alt-Autorepeat will reactive the Firefox menu.
 ;              - Send {Blind}{LControl} directly after releasing mouse button for QuickPosition did not work,
 ;                as additional LAlt+down keep coming in afterwards)
-;              - Menu masking with Send {Blind}{vkE8} works for Firefox, but inserts ^@ characters into terminal windows without stdin
-;              Helpful: https://w3c.github.io/uievents/tools/key-event-viewer.html
+;              - Menu masking with Send {Blind}{vkE8} works for Firefox, but inserts ^@ characters into Console terminal windows without stdin
+;              Helpful hints: https://w3c.github.io/uievents/tools/key-event-viewer.html
 ;              1.1.26.01 was the last version that sent LControl down+up correctly before the last Alt+Up event
 ;              If someone is successful with later versions getting a single solution for masking menu with LControl for Notepad and Firefox, please let me know!
+;
 ; For Unicode AHK Version, use UTF-8-BOM coding for .ahk file
-
-; DllCall parameters are implemented as 32bit -> requires 32bit version of Autohotkey (which of course still runs as well on 64bit machines)
+;
+; 32bit vs 64bit: At the moment, I don't see an advantage of the 64bit version. I've always used the 32bit version without issues on 64bit Windows up to Win11
+;                 So for now, I suggest to just stay with a single 32bit version, for backwards compatibility and because
+;                 DllCall parameters are implemented as 32bit -> requires 32bit version of Autohotkey (which of course still runs as well on 64bit machines)
 
 If (A_AhkVersion < MinVersion OR A_AhkVersion > MaxVersion OR A_PtrSize != 4)
 {
@@ -168,10 +180,8 @@ If (A_AhkVersion < MinVersion OR A_AhkVersion > MaxVersion OR A_PtrSize != 4)
         ExitApp
 }
 
-;***********************
-; Prepare Default configuration and do basic version checks
-;
-DefaultEnableFocuslessScroll := 0   ; This is usually no longer required for Win10+..except when running Office 2010, which still requires this option. So we don't hide it, just disable it by default.
+
+DefaultEnableFocuslessScroll := 0   ; This is usually no longer required for Win10+..except when running very old SW, such as Office 2010, which still requires this option. So we don't hide it, just disable it by default.
 DefaultBorderlessSnapping    := 0   ; Supports (and thus requires) DPI-awareness support, only available on later Windows 10 versions
 DefaultWindowIgnoreList      := ""
 
@@ -201,9 +211,91 @@ If (SubStr(A_OSVersion,1,3) != "WIN")
     GroupAdd, IgnoreActiveWindowsList, ahk_class TaskSwitcherWnd               ; Ignore Win 7, 8.1, Vista Alt+Tab
 }
 
-;***********************
-; Read INI file
+Gosub, InitIniFile
 
+
+
+; ***********************************
+; Global settings and variables
+; ***********************************
+
+; Global Constants
+global WHEEL_DELTA    := 120 ; This is a windows constant, which is the equivalent for 1 Wheel Up/Down event
+global WM_MOUSEWHEEL  := 0x20A  ; Window message used for vertical scrolling, typ.multiples of 4
+global WM_MOUSEHWHEEL := 0x20E  ; Window message used for horizontal scrolling, typ.mulitiples of 16
+
+global MSGICON_HAND              := 0x10
+global MSGICON_QUESTION_OKCANCEL := 0x21
+global MSGICON_EXCLAMATION       := 0x30
+global MSGICON_INFO              := 0x40
+global TRAYICON_INFO    :=  0x1
+global TRAYICON_WARNING :=  0x2
+global TRAYICON_ERROR   :=  0x3
+global TRAYICON_NOSOUND := 0x10
+
+global DPI_AWARENESS_CONTEXT_UNAWARE              := -1
+global DPI_AWARENESS_CONTEXT_SYSTEM_AWARE         := -2
+global DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    := -3
+global DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 := -4
+global DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED    := -5
+global DPI_AWARENESS_INVALID           := -1
+global DPI_AWARENESS_UNAWARE           := 0
+global DPI_AWARENESS_SYSTEM_AWARE      := 1
+global DPI_AWARENESS_PER_MONITOR_AWARE := 2
+
+startupLinkFile := A_Startup . "\KDE Mover-Sizer.lnk"
+
+;SendMode Input  ; Recommended for new scripts due to its superior speed and reliability. (jlr)
+                 ; But SendMode Input also causess "Mouse Key Up" events being lost sometimes (even to GetKeyState),
+                 ; resulting in a stuck DragScroll mode despite no button is pressed
+                 ; -> don't use this in combination with enabled DragScroll
+
+SetWinDelay, %WinDelay%
+
+CoordMode, Mouse,Screen
+CoordMode, Pixel,Screen
+CoordMode, ToolTip,Screen
+
+MayToggleMaximizeRestore := true
+
+if (RunAsAdministrator AND A_IsAdmin = 0)
+{
+    Run, % "*RunAs " (A_IsCompiled ? "" : A_AhkPath " ") Chr(34) A_ScriptFullPath Chr(34),,UseErrorLevel
+    If ErrorLevel
+    {
+        MsgBox, % MSGICON_EXCLAMATION, Run as Administrator failed, % "Failed to run with Administrator permissions.`r`nWill continue running as normal user...`r`n"
+
+        RunAsAdministrator := 0
+        IniWrite, %RunAsAdministrator%, KDE_Mover-Sizer.ini, Settings, RunAsAdministrator
+        reload
+    }
+}
+
+For i,s in ["WindowIgnoreList", "DragScrollWindowIgnoreList", "DragScrollFullScrollStepWindowList"]
+If (SubStr(%s%, 0) != ",")
+{
+    newlist := %s% . ","
+    IniWrite, %newlist%,   KDE_Mover-Sizer.ini, Settings, %s%
+}
+
+if BorderlessSnapping
+    SetDefaultDpiAwarenessContext()
+
+Gosub, InitHotkeyHandler
+
+Gosub, PrepareMenu
+
+SetBatchLines, %DefaultBatchLines% ; we need sufficient idle time for windows repainting, so restore default
+
+return
+
+
+
+; ***************************************************************
+; ********* INIT: Read (and write default) INI file *************
+; ***************************************************************
+;
+InitIniFile:
     IniRead,   SnapOnSizeEnabled,       KDE_Mover-Sizer.ini, Settings, SnapOnSizeEnabled, 1          ; default: true
     IniWrite, %SnapOnSizeEnabled%,      KDE_Mover-Sizer.ini, Settings, SnapOnSizeEnabled
     IniRead,   SnapOnMoveEnabled,       KDE_Mover-Sizer.ini, Settings, SnapOnMoveEnabled, 1          ; default: true
@@ -281,7 +373,6 @@ If (SubStr(A_OSVersion,1,3) != "WIN")
     IniWrite, %DragScroll_Mouse%,       KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Mouse
     IniRead,   DragScroll_HorizKey,     KDE_Mover-Sizer.ini, Hotkeys, DragScroll_HorizKey, LButton     ; key used during MButton vertical scroll to switch to horizontal scroll, default: Left Mouse Button
     IniWrite, %DragScroll_HorizKey%,    KDE_Mover-Sizer.ini, Hotkeys, DragScroll_HorizKey
-
 
     ; Settings for Draw Grid and colour sampler
     ;
@@ -363,72 +454,7 @@ If (SubStr(A_OSVersion,1,3) != "WIN")
         . "Otherwise, most features and settings will remain in default state`n`n"
         . "and cannot be enabled or changed."
     }
-
-
-; ***********************************
-; Global settings and variables
-; ***********************************
-
-; Global Constants
-WHEEL_DELTA    := 120 ; This is a windows constant, which is the equivalent for 1 Wheel Up/Down event
-WM_MOUSEWHEEL  := 0x20A  ; Window message used for vertical scrolling, typ.multiples of 4
-WM_MOUSEHWHEEL := 0x20E  ; Window message used for horizontal scrolling, typ.mulitiples of 16
-
-MSGICON_HAND        := 0x10
-MSGICON_QUESTION_OKCANCEL := 0x21
-MSGICON_EXCLAMATION := 0x30
-MSGICON_INFO        := 0x40
-TRAYICON_INFO    :=  0x1
-TRAYICON_WARNING :=  0x2
-TRAYICON_ERROR   :=  0x3
-TRAYICON_NOSOUND := 0x10
-
-startupLinkFile := A_Startup . "\KDE Mover-Sizer.lnk"
-
-;SendMode Input  ; Recommended for new scripts due to its superior speed and reliability. (jlr)
-                 ; But SendMode Input also causess "Mouse Key Up" events being lost sometimes (even to GetKeyState),
-                 ; resulting in a stuck DragScroll mode despite no button is pressed
-                 ; -> don't use this in combination with enabled DragScroll
-
-SetWinDelay, %WinDelay%
-
-CoordMode, Mouse,Screen
-CoordMode, Pixel,Screen
-CoordMode, ToolTip,Screen
-
-MayToggleMaximizeRestore := true
-
-if (RunAsAdministrator AND A_IsAdmin = 0)
-{
-    Run, % "*RunAs " (A_IsCompiled ? "" : A_AhkPath " ") Chr(34) A_ScriptFullPath Chr(34),,UseErrorLevel
-    If ErrorLevel
-    {
-        MsgBox, % MSGICON_EXCLAMATION, Run as Administrator failed, % "Failed to run with Administrator permissions.`r`nWill continue running as normal user...`r`n"
-
-        RunAsAdministrator := 0
-        IniWrite, %RunAsAdministrator%, KDE_Mover-Sizer.ini, Settings, RunAsAdministrator
-        reload
-    }
-}
-
-For i,s in ["WindowIgnoreList", "DragScrollWindowIgnoreList", "DragScrollFullScrollStepWindowList"]
-If (SubStr(%s%, 0) != ",")
-{
-    newlist := %s% . ","
-    IniWrite, %newlist%,   KDE_Mover-Sizer.ini, Settings, %s%
-}
-
-if BorderlessSnapping
-    SetDefaultDpiAwarenessContext()
-
-Gosub, InitHotkeyHandler
-
-Gosub, PrepareMenu
-
-SetBatchLines, %DefaultBatchLines% ; we need sufficient idle time for windows repainting, so restore default
-
-return
-
+    return
 
 ; ***************************************************************
 ; ********* INIT: Install MOUSE & KEY EVENT handler *************
@@ -1161,7 +1187,7 @@ MenuAbout:
         . "     " . strname(DoubleKey_Hotkey2) . " key twice, much like a double-click. Hold the second`r`n"
         . "     hotkey(s) press down until you click the mouse button. Tada!`r`n"
         . "`r`n"
-        . "For more, see menu and tray info balloons.`r`n"
+        . "For more, see menu and tray info balloons when enabling options.`r`n"
         . "For even more, edit the INI file and the [AddOns] section.`r`n"
         . "`r`n"
         . "Known authors (in alphabetical order)..`r`n"
@@ -1234,6 +1260,7 @@ DoMovingWindowMinimize:
     {
         WinGetOffset(KDE_WinOffX,KDE_WinOffY,KDE_WinOffW,KDE_WinOffH, KDE_id)
         wndDpiAwareness := GetWindowDpiAwareness(KDE_id)
+        wndDpiOriginal  := wndDpiCurrent := GetWindowDpi(KDE_id)
         SetWindowSpecificDpiAwarenessContext(wndDpiAwareness)
     }
     Else
@@ -1299,6 +1326,7 @@ DoMovingWindowMinimize:
                 RestoreOriginalWindowState()
             break
         }
+        
 
         if (QuickPosition_Button_wasUp = 0 AND GetKeyState( QuickPosition_Hotkey2, "P" ) = 0)
             QuickPosition_Button_wasUp := 1
@@ -1306,6 +1334,28 @@ DoMovingWindowMinimize:
             LockHorizVert_Button_wasUp := 1
 
         MouseGetPos,MouseX,MouseY ; Get the current mouse position.
+
+        ; When moving a window to a monitor with a different DPI, scale the window size accordingly,
+        ; so that the window content stays the same (e.g. line breaks in editor)
+        ; -> assumes default scaling (e.g. notepad). Special scaling (e.g. conhost.exe) is ignored.
+        If (BorderlessSnapping = 1 And wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE)
+        {
+            if ShowWindowWhenDragging
+                wndDpiNew := GetWindowDpi(KDE_id)
+            Else
+                wndDpiNew := GetMonitorDpiFromRect(KDE_WinX2,KDE_WinY2, KDE_WinW,KDE_WinH)
+                
+            ; Tooltip, % "wndDpiCurrent: " wndDpiCurrent ", wndDpiNew: " wndDpiNew
+            if (wndDpiNew != wndDpiCurrent)
+            {
+                wndScale := wndDpiNew / wndDpiCurrent
+                wndDpiCurrent := wndDpiNew
+                KDE_WinW := ceil(KDE_WinW * wndScale)
+                KDE_WinH := ceil(KDE_WinH * wndScale)
+            }
+        }
+
+
 
         if (QuickPosition_Button_wasUp AND GetKeyState( QuickPosition_Hotkey2 , "P" ))   ; no regular moving, but quickly snap and resize window to screen edge/corner
         {
@@ -1384,6 +1434,19 @@ DoMovingWindowMinimize:
 
     If ShowWindowWhenDragging = 0
     {
+        ; If we move a MONITOR_AWARE window to a different screen for the first time, Windows will scale automatically _after_ our move command,
+        ; so our (already scaled) width and height will no longer match.
+        ; -> for this case, pre-(un)scale width and height and let windows do the scaling
+        if ( wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE )
+        {
+            wndDpiNew := GetMonitorDpiFromRect(KDE_WinX2,KDE_WinY2, KDE_WinW2,KDE_WinH2)
+            if (wndDpiNew != wndDpiOriginal)
+            {
+                wndScale := wndDpiOriginal / wndDpiNew
+                KDE_WinW2 := ceil(KDE_WinW2 * wndScale)
+                KDE_WinH2 := ceil(KDE_WinH2 * wndScale)
+            }
+        }
         DrawRectFrame_Cancel()
         If Esc_Button = U
             WinMove, ahk_id %KDE_id%,, (KDE_WinX2 + KDE_WinOffFrameX), (KDE_WinY2 + KDE_WinOffFrameY), (KDE_WinW2 + KDE_WinOffFrameW), (KDE_WinH2 + KDE_WinOffFrameH) ; Move the window to the new position.
@@ -1471,7 +1534,7 @@ DoResizingWindowMaximize:
         Sleep,5
     }
 
-    ; Get the initial window offset for borderless snapping. Because of Windows bug, this only works in DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE mode,
+    ; Get the initial window offset for borderless snapping. Because of a Windows bug, this only works in DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE mode,
     ; so we need to get it before we switch to the target window mode
     ; if we can't (old Windows) or don't care, just set all offsets to zero
     If BorderlessSnapping
@@ -2300,8 +2363,8 @@ FocuslessScroll(WMid, MouseX, MouseY, CtrlHnd, Scrollstep)
 ; *********** ACTION: Drag Scroll with Middle Mouse button ***********
 ; ********************************************************************
 ; We use WM_MOUSEWHEEL for scrolling, which allows finer steps than sending WheelUp/Down.
-; However, some applications (notepad, notepad++, ...) only react on increments of (multiples of) 120;
-; if they get anything else, mouse wheel will not immediately react anymore.
+; However, some applications (notepad, notepad++, ...) only react on full increments/multiples of 120;
+; if they get anything else, mouse wheel will not react immediately anymore.
 ; And when scrolling, they have the same spacing as a normal Send,WheelUp/Down events.
 ; -> use DragScrollFullScrollStepWindowList to define which windows want that
 ;
@@ -2347,7 +2410,7 @@ DoDragScroll:
     Hook := DllCall("SetWindowsHookEx", "Int",14, "Ptr",DragScrollMouseHookAddr
                    ,"Ptr",DllCall("GetModuleHandle", "Ptr",0, "Ptr"), "UInt",0, "Ptr") ; Hook on WH_MOUSE_LL (tnx to Rohwedder for the Hook idea&stuff)
 
-    Sleep,2 ; mouse curser is sometimes off by 1 pixel, unclear why, but wait until any potential pending MOVE messages are handled
+    Sleep,2 ; mouse curser was sometimes off by 1 pixel, so wait until any potential pending MOVE messages are handled
     MouseGetPos, DragScrollX, DragScrollY
 
     KeyWait %DragScroll_Mouse%, U
@@ -2378,7 +2441,7 @@ DoDragScrollUp:
 ;   https://learn.microsoft.com/windows/win32/inputdev/wm-mousemove
 DragScrollMouseHook(nCode, wParam, lParam) {
     Global DragScrollMouseMove, DragScrollX,DragScrollY, DragScrollIsRunning, DragScrollXDelta,DragScrollYDelta, DragScrollXDeltaIncr,DragScrollYDeltaIncr
-         , DragScrollMinUpdateInterval_us, DragScrollIntervalDirectionChange_us, DragScrollMouseHasMoved, MBwmID, DragScrollState, WM_MOUSEHWHEEL, WM_MOUSEWHEEL  ; , MButtonHistory
+         , DragScrollMinUpdateInterval_us, DragScrollIntervalDirectionChange_us, DragScrollMouseHasMoved, MBwmID, DragScrollState  ; , MButtonHistory
 
     If (nCode >= 0 AND wParam = 0x0200)
     { ; WM_MOUSEMOVE = 0x0200
@@ -2599,6 +2662,7 @@ QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2,
     H2 := H2 + WinOffH
 }
 
+
 ; *******************************************************
 ; *************  General Helper Functions ***************
 ; *******************************************************
@@ -2670,12 +2734,9 @@ GetCurrentScreenBorders(Mouse_X, Mouse_Y, ByRef CurrentScreenLeft, ByRef Current
 
 ; AHK default is DPI_AWARENESS_CONTEXT_SYSTEM_AWARE (-2), but for most stuff, we need it to be MONITOR_AWARE by default
 ; set KDE Mover-Sizer's default DPI awareness to PER_MONITOR
-; returns old DPI awareness context
+; [return] old DPI awareness context
 SetDefaultDpiAwarenessContext()
 {
-    static DPI_AWARENESS_CONTEXT_SYSTEM_AWARE := -2
-    static DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE := -3
-    static DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 := -4
     return, DllCall("SetThreadDpiAwarenessContext", "Int",DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, "Int")
 }
 ; gets actual DPI awareness of specific window
@@ -2684,26 +2745,47 @@ GetWindowDpiAwareness(hWindow)
     wndDpiAwarenessCtx := DllCall("GetWindowDpiAwarenessContext", "Ptr",hWindow, "Int")
     return, DllCall("GetAwarenessFromDpiAwarenessContext", "Int",wndDpiAwarenessCtx, "Int")
 }
+; Gets the (current) DPI for the specified window
+; Only useful for DPI_AWARENESS_PER_MONITOR_AWARE windows.
+; All others just return 96 (they don't return A_ScreeDPI!)
+; But that's OK, as adaptive scaling of the window size is only required for MONITOR_AWARE windows anyway
+; [return] DPI of window
+GetWindowDpi(hWindow)
+{
+    return, DllCall("GetDpiForWindow", "ptr",hWindow, "uint")
+}
 ; set DPI awareness context of AHK to match DPI awareness of target window
 SetWindowSpecificDpiAwarenessContext(wndDpiAwareness)
 {
-    static DPI_AWARENESS_CONTEXT_SYSTEM_AWARE := -2
-    static DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE := -3
-    static DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 := -4
-    static DPI_AWARENESS_UNAWARE := 0
-    static DPI_AWARENESS_SYSTEM_AWARE := 1
     If (wndDpiAwareness = DPI_AWARENESS_SYSTEM_AWARE || wndDpiAwareness = DPI_AWARENESS_UNAWARE)
         DllCall("SetThreadDpiAwarenessContext", "Int",DPI_AWARENESS_CONTEXT_SYSTEM_AWARE, "Int")
 }
 ; restore DPI awareness context of AHK (only if it was changed before to match DPI awareness of target window)
 RestoreWindowSpecificDpiAwarenessContext(wndDpiAwareness)
 {
-    static DPI_AWARENESS_CONTEXT_SYSTEM_AWARE := -2
-    static DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE := -3
-    static DPI_AWARENESS_UNAWARE := 0
-    static DPI_AWARENESS_SYSTEM_AWARE := 1
     If (wndDpiAwareness = DPI_AWARENESS_SYSTEM_AWARE || wndDpiAwareness = DPI_AWARENESS_UNAWARE)
         DllCall("SetThreadDpiAwarenessContext", "Int",DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE, "Int")
+}
+; For ShowWindowWhenDragging = 0, we can't use GetWindowDpi as we didn't move the window yet.
+; For some reason, user32.dll\MonitorFromRect does not find the correct monitor when the window spans two monitors with different DPIs
+; -> We use User32.dll\MonitorFromRect with the window center instead.
+GetMonitorDpiFromRect(X, Y, W, H) {
+    static MDT_EFFECTIVE_DPI := 0
+    static MONITOR_DEFAULTTONEAREST := 2
+    ;VarSetCapacity(RC, 16, 0)
+    ;NumPut(X, RC, 0, "Int"), NumPut(Y, RC, 4, "Int"), NumPut(X + W, RC, 8, "Int"), NumPut(Y + H, RC, 12, "Int")
+    ;hMon := DllCall("User32.dll\MonitorFromRect", "Ptr", &RC, "UInt", 0, "Ptr")
+    ;VarSetCapacity(PT, 8, 0)
+    ;NumPut(ceil(X+W/2), PT, 0, "Int"), NumPut(ceil(Y+H/2), PT, 4, "Int")
+    hMon :=DllCall("User32.dll\MonitorFromPoint", "Int64", (ceil(X+W/2) & 0xFFFFFFFF) | (ceil(Y+H/2) << 32), "UInt", MONITOR_DEFAULTTONEAREST, "Ptr")
+
+    dpiX := dpiY := 0
+    DllCall("SHcore\GetDpiForMonitor", "Ptr",hMon, "Int", MDT_EFFECTIVE_DPI, "UInt*",dpiX, "UInt*",dpiY)
+    
+    Tooltip, % "X Y W H: " X " " Y " " W " " H " , hMon: " hMon ", dpiX: " dpiX
+
+    ; assert(dpiX = dpiY)
+    return dpiX
 }
 
 ; Calculate offset to for invisible frame around window
@@ -2859,7 +2941,7 @@ RestoreOriginalWindowState()
     WinGet, current_isMax,MinMax,ahk_id %orig_WinID%
     if (current_isMax AND NOT orig_isMax)
         WinRestore, ahk_id %orig_WinID%
-    if (NOT current_isMax AND orig_isMax)
+    if (! current_isMax AND orig_isMax)
         WinMaximize, ahk_id %orig_WinID%
 }
 
@@ -2943,6 +3025,7 @@ SpecialCharactersLbl:
 
 ; One (static) hotkey must always be enabled - otherwise, (dynamic) hotkeys won't work for some reason
 ; This hotkey Ctrl+Shift+Alt+F9 does nothing and is passed on, just makes sure dynamic mouse hotkeys don't disappear
+; Or remove the semicolons and use it for debugging
 ~^!+F9::
     ;SendEvent {Blind}{F9 down}
     ;KeyWait F9, U
@@ -2962,9 +3045,6 @@ SpecialCharactersLbl:
     ;ListVars
     ;ListLines
     return
-;~^!+MButton::
-;    return
-
 
 
 ;ProductName := "KDE Mover-Sizer"
