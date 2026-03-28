@@ -259,7 +259,6 @@ global DPI_AWARENESS_UNAWARE           := 0
 global DPI_AWARENESS_SYSTEM_AWARE      := 1
 global DPI_AWARENESS_PER_MONITOR_AWARE := 2
 
-startupLinkFile := A_Startup . "\KDE Mover-Sizer.lnk"
 
 ;SendMode Input  ; Recommended for new scripts due to its superior speed and reliability. (jlr)
                  ; But SendMode Input also causess "Mouse Key Up" events being lost sometimes (even to GetKeyState),
@@ -272,9 +271,17 @@ CoordMode, Mouse,Screen
 CoordMode, Pixel,Screen
 CoordMode, ToolTip,Screen
 
-MayToggleMaximizeRestore := true
+MayToggleMaximizeRestore := 1
 
-if (RunAsAdministrator AND A_IsAdmin = 0)
+
+startupLinkFile := A_Startup . "\KDE Mover-Sizer.lnk"
+
+if (RunAsAdministrator = 1 AND A_IsAdmin = 1)
+    IniRead,   startupLinkFile,  KDE_Mover-Sizer.ini, Settings, startupLinkFile, %startupLinkFile%
+Else
+    IniWrite, %startupLinkFile%, KDE_Mover-Sizer.ini, Settings, startupLinkFile
+
+if (RunAsAdministrator = 1 AND A_IsAdmin = 0)
 {
     Run, % "*RunAs " (A_IsCompiled ? "" : A_AhkPath " ") Chr(34) A_ScriptFullPath Chr(34),,UseErrorLevel
     If ErrorLevel
@@ -498,14 +505,14 @@ InitHotkeyHandler:
         Hotkey, %ResizingWindow_Hotkey%%ResizingWindow_Mouse%, DoResizingWindowMaximize, On
         Hotkey, %ToggleMaximize_Hotkey%%ToggleMaximize_Mouse%, DoToggleMaximize, On
         Hotkey, %ToggleMaximize_Hotkey%%ToggleMaximize_Mouse% Up, DoToggleMaximize_Up, On
-        if DoubleAltShortcuts
-            Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
         if EnableFocuslessScroll
         {
             Hotkey, WheelUp,   DoFocuslessScrollUp, On
             HotKey, WheelDown, DoFocuslessScrollDown, On
         }
     Hotkey, IfWinNotActive
+
+    Gosub, OnDoubleKey_Enable
 
     if (AddOnEnable_DrawGrid = 1 AND EnableDrawGrid = 1)
         Hotkey, %DrawGridOverlay_Hotkey%%DrawGridOverlay_Mouse%, DoDrawGridOverlay, On
@@ -633,7 +640,7 @@ PrepareMenu:
     Menu, tray, add
     Menu, tray, add, Edit My Ini File, MenuEditMyIni
     Menu, tray, add, Enable HotKeys, MenuHotKeysToggle
-    Menu, tray, add, Run with elevated permissions, MenuRunAsAdmin
+    Menu, tray, add, Run as administrator, MenuRunAsAdmin
     Menu, tray, add, Automatically run on startup, MenuStartupShortcut
     Menu, tray, add
     Menu, tray, add, Hide Tray Icon, MenuHideIcon
@@ -690,7 +697,10 @@ PrepareMenu:
         Menu, MyOptionsMenu, Check, Use 3x3 grid for Resize direction
     
     if A_IsAdmin
-        Menu, tray, Check, Run with elevated permissions
+    {
+        Menu, tray, Check, Run as administrator
+        RunAsAdministrator := 1
+    }
 
     if FileExist(startupLinkFile)
         Menu, tray, Check, Automatically run on startup
@@ -1100,16 +1110,19 @@ MenuRunAsAdmin:
     IniWrite, %RunAsAdministrator%, KDE_Mover-Sizer.ini, Settings, RunAsAdministrator
     if RunAsAdministrator
     {
-        If ( A_IsAdmin = false )
+        If ( A_IsAdmin = 0 )
             reload
         else
-            Menu, tray, ToggleCheck, Run with elevated permissions
+            Menu, tray, ToggleCheck, Run as administrator
     }
     Else
     {
-        MsgBox, % MSGICON_EXCLAMATION, KDE Mover-Sizer, % "Manual restart is required to return to normal user permissions.."
+        MsgBox, % MSGICON_INFO, KDE Mover-Sizer, % "Manual restart is required to return to normal user permissions.."
         If FileExist(startupLinkFile)
-            Run, % "explorer.exe " . A_Startup
+        {
+            SplitPath, startupLinkFile,, startupLinkFile_Dir
+            Run, % "explorer.exe " . startupLinkFile_Dir
+        }
         Else
             Run, % "explorer.exe " . A_ScriptDir
         ExitApp
@@ -1252,7 +1265,7 @@ DoMovingWindowMinimize:
         if ( MovingWindow_Hotkey != "" OR A_TimeSincePriorHotkey < 5000 )  ; ignore DoubleAlt when there is no modifier hotkey for and it has occurred more than 5sec ago
             PostMessage, 0x112,0xf020,,,ahk_id %KDE_id%
             ; This message is mostly equivalent to WinMinimize, but it avoids a bug with PSPad.
-        DoubleAlt := false
+        DoubleAlt := 0
         ;Send {Blind}{%DoubleKey_hotkey2%}   ; TODO: Check for different hotkeys if this is really no longer necessary
         return
     }
@@ -1260,11 +1273,10 @@ DoMovingWindowMinimize:
     ; ********************************************
     ; Init-stuff /before/ switching DPI context
 
-    ; stop the double-key from interfering
-    if DoubleAltShortcuts
-        Hotkey, %DoubleKey_Hotkey2%, DoNothing, On
-     ;;Hotkey, ~%DoubleKey_Hotkey2%, DoNothing, On
-    ;;;Hotkey, %DoubleKey_Hotkey2%, DoNothing, On
+    ; stop the double-key and QuickPosition hotkey from interfering
+    Gosub, OnDoubleKey_Disable
+    if DoubleAltShortcuts = 0
+        Hotkey, ~%QuickPosition_Hotkey2%, DoNothing, On
 
     ; WinRestore 1st part
     WinGet, KDE_WinMaximized,MinMax,ahk_id %KDE_id%
@@ -1477,8 +1489,10 @@ DoMovingWindowMinimize:
 
     DisableEscapeHotkey()
 
-    ; reenable DoubleKey_Hotkey and DragScroll
+    ; reenable DoubleKey_Hotkey
     Gosub, OnDoubleKey_Enable
+    if DoubleAltShortcuts = 0
+        Hotkey, ~%QuickPosition_Hotkey2%, Off
 
     return
 
@@ -1517,7 +1531,7 @@ DoResizingWindowMaximize:
             Else
                 WinMaximize, ahk_id %KDE_id%
         }
-        DoubleAlt := false
+        DoubleAlt := 0
         ;Send {Blind}{%DoubleKey_hotkey2%}
 
         return
@@ -1528,6 +1542,9 @@ DoResizingWindowMaximize:
 
     ; stop the double-key from interfering
     Gosub, OnDoubleKey_Disable
+    if DoubleAltShortcuts = 0
+        Hotkey, ~%QuickPosition_Hotkey2%, DoNothing, On
+
 
     ; Get the initial mouse position and window id, and
     ; do WinRestore if the window is maximized.
@@ -1906,6 +1923,8 @@ DoResizingWindowMaximize:
 
     ; reenable DoubleKey_Hotkey
     Gosub, OnDoubleKey_Enable
+    if DoubleAltShortcuts = 0
+        Hotkey, ~%QuickPosition_Hotkey2%, Off
     
     return
 
@@ -1935,7 +1954,7 @@ DoToggleMaximize:
             MouseGetPos, ,,KDE_id
             WinClose, ahk_id %KDE_id%
         }
-        DoubleAlt := false
+        DoubleAlt := 0
         return
     }
 
@@ -1951,13 +1970,13 @@ DoToggleMaximize:
         Else
             WinMaximize, ahk_id %KDE_id%
 
-        MayToggleMaximizeRestore := false
+        MayToggleMaximizeRestore := 0
         return
     }
     return
 
 DoToggleMaximize_Up:
-    MayToggleMaximizeRestore := true
+    MayToggleMaximizeRestore := 1
     return
 
 
@@ -1991,7 +2010,6 @@ OnDoubleKey_Enable:
 OnDoubleKey_Disable:
     if DoubleAltShortcuts
         Hotkey, ~%DoubleKey_Hotkey2%, DoNothing, On
-        ;Hotkey, ~%DoubleKey_Hotkey2%, Off
     return
 
 ; *******************************************************************************
@@ -2423,7 +2441,7 @@ DoDragScroll:
     DragScrollXDeltaIncr     := DragScrollWindowWantsFullStepIncrement ? DragScrollSpeedDivider : 4   ; minimum >1: increase the chance of starting a Y-Scroll 
     DragScrollMouseHasMoved  := 0   ; True once a wheel message was sent
     DragScrollIsRunning      := 0   ; True while single-shot timer function "DragScroll" is active. Prevents calling concurrently
-    DragScrollState          := 0   ; 0:initial state to determine direction, 1:limit to y-axis, 2:limit to x-axis
+    DragScrollState          := 0   ; 0:initial state to determine direction, 1:scroll vertical (y-axis), 2:scroll horizontal (x-axis)
     DragScrollQPCus(1) ; reset timer
     ;MButtonHistory := ""
 
@@ -2912,7 +2930,7 @@ CheckIsWindowInList(ByRef WindowList, ByRef WindowMatchStr)
     }
     WindowMatchStr := currentwinname . ","
     
-    return InStr( WindowList, WindowMatchStr, CaseSensitive = false ) ? 1 : 0
+    return InStr( WindowList, WindowMatchStr, CaseSensitive = 0 ) ? 1 : 0
 }
 
 ; returns the smaller of two values
@@ -3040,7 +3058,8 @@ SpecialCharactersLbl:
     }
     return
 
-; NOTE: For the currently required AHK versions, there is something fishy using SendEvent {Blind}:
+; NOTE: For the currently required AHK versions, there is something broken using SendEvent {Blind}:
+;
 ;       The following hotkey does not send F9Down, only 2x F9Up:
 ;       (check with https://w3c.github.io/uievents/tools/key-event-viewer.html)
 ;^!+F9::
