@@ -18,13 +18,17 @@
 ;   go out to ck, thinkstorm, Chris, and aurelian for a job well done.
 
 ; Known issues:
-; - MButton Drag Scrolling is not working on new windows applications based on ApplicationFrameHost.exe (such Calculator or certain setting pages)
-;   For some reason, they only react on SendEvent{Wheel}, but not on PostMessage WM_MOUSEVWHEEL
+; - MButton Drag Scrolling is not working on new windows applications based on ApplicationFrameHost.exe (such Calculator or certain setting pages).
+;   They only react on SendEvent{Wheel}, but not on PostMessage WM_MOUSEWHEEL. 
 ; - Dragging SYSTEM_AWARE windows across monitors with different DPIs wrongly moves the window origin (causing even fluttering in a certain area) while the window is on both screens.
 ;   Reason is that having the Mouse Cursor on a different screen than the Window Center causes inconsistent Win/AHK-internal DPI-scaling
 
 ;   Itstory:
 ;   Mar  29, 2026:      Added: For Drag-Scrolling, set a minimum distance to determine direction and start scrolling
+;                       Added: Option to scale relative to screen area when moving windows between monitors with different DPI settings.
+;                              Enabled: the window keeps the same relative size between monitors, i.e. if a window fills 1/4 on the original screen,
+;                                       it is scaled to alwo fill 1/4 of the destination screen (if the application allows it)
+;                              Disabled: old behaviour: window contents stays the same, i.e. window gets larger (more pixels) to e.g. fit the same number of lines
 ;   Feb  25, 2026:      Added: Correct scaling for moving PER_MONITOR_AWARE between monitors with different DPI.
 ;                              Hint if "Showing window contents while dragging" is disabled: press Control (WindowToFront) hotkey to force window update on current position
 ;                       Clean: Removed FocuslessScroll_Modifier. Never tested, never used
@@ -1316,7 +1320,7 @@ DoMovingWindowMinimize:
     {
         WinGetOffset(KDE_WinOffX,KDE_WinOffY,KDE_WinOffW,KDE_WinOffH, KDE_id)
         wndDpiAwareness := GetWindowDpiAwareness(KDE_id)
-        wndDpiOriginal  := wndDpiCurrent := GetWindowDpi(KDE_id)
+        wndDpiCurrent   := GetWindowDpi(KDE_id)
         SetWindowSpecificDpiAwarenessContext(wndDpiAwareness)
     }
     Else
@@ -1345,11 +1349,11 @@ DoMovingWindowMinimize:
     ; Get the initial window position.
     WinGetPos, KDE_WinX1, KDE_WinY1, KDE_WinW, KDE_WinH, ahk_id %KDE_id%
     
-    If BorderlessSnappingAndDPI
+    If ScalePerMonitorAreaDPI
     {
-        GetCurrentScreenBorders(ceil(KDE_WinX1+KDE_WinW/2),ceil(KDE_WinY1+KDE_WinH/2), l, r, t, b)
-        monWidthOrig  := monWidthCurrent  := r-l
-        monHeightOrig := monHeightCurrent := b-t
+        GetCurrentScreenBorders(KDE_WinX1 + (KDE_WinW>>1),KDE_WinY1 + (KDE_WinH>>1), scrleft, scrright, scrtop, scrbottom)
+        scrWidthCurrent  := scrright - scrleft
+        scrHeightCurrent := scrbottom - scrtop
     }
 
     ; WinRestore 2nd part after DPI switch (move window center to cursor)
@@ -1376,6 +1380,10 @@ DoMovingWindowMinimize:
         KDE_WinH  := KDE_WinH  - KDE_WinOffFrameH
     }
     
+    ; Initial values for multi-DPI-Scaling
+    KDE_WinX2 := KDE_WinX1
+    KDE_WinY2 := KDE_WinY1
+    
     Loop
     {
         GetKeyState,KDE_Button,%MovingWindow_Mouse%,P ; Break if button has been released.
@@ -1389,60 +1397,59 @@ DoMovingWindowMinimize:
                 RestoreOriginalWindowState()
             break
         }
-        
 
-        if (QuickPosition_Button_wasUp = 0 AND GetKeyState( QuickPosition_Hotkey2, "P" ) = 0)
+        If (QuickPosition_Button_wasUp = 0 AND GetKeyState( QuickPosition_Hotkey2, "P" ) = 0)
             QuickPosition_Button_wasUp := 1
-        if (LockHorizVert_Button_wasUp = 0 AND GetKeyState( LockHorizVert_Hotkey2, "P" ) = 0)
+        If (LockHorizVert_Button_wasUp = 0 AND GetKeyState( LockHorizVert_Hotkey2, "P" ) = 0)
             LockHorizVert_Button_wasUp := 1
 
         MouseGetPos,MouseX,MouseY ; Get the current mouse position.
 
-        ; When moving a (PER_MONITOR_AWARE)) window to a monitor with a different DPI, scale the window size accordingly,
-        ; so that the window content stays the same (e.g. line breaks in editor)
-        ; -> assumes default scaling (e.g. notepad). Special scaling (e.g. conhost.exe) is ignored.
+        ; When moving a (PER_MONITOR_AWARE)) window to a monitor with a different DPI, scale the window size accordingly.
+        ; ScalePerMonitorAreaDPI = 0: scale so that the window content stays the same (e.g. line breaks in editor)
+        ;   -> assumes default scaling (e.g. notepad). Special scaling (e.g. conhost.exe) is ignored.
         ; This is again a window thing: SYSTEM_AWARE apps scale automatically, MONITOR_AWARE apps take size in actual screen pixels
+        ; ScalePerMonitorAreaDPI = 1: scale so that screen area stays the same, using current screen borders instead of DPI
         If BorderlessSnappingAndDPI
         {
-            if (ScalePerMonitorAreaDPI = 0 AND wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE)
+            If (ScalePerMonitorAreaDPI = 0 AND wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE)
             {
-                if ShowWindowWhenDragging
+                ; Scale based on 
+                If ShowWindowWhenDragging
                     wndDpiNew := GetWindowDpi(KDE_id)
                 Else
                     wndDpiNew := GetMonitorDpiFromRect(KDE_WinX2,KDE_WinY2, KDE_WinW,KDE_WinH)
                     
-                if (wndDpiNew != wndDpiCurrent)
+                If (wndDpiNew != wndDpiCurrent)
                 {
-                    ;Tooltip, % "1: wndDpiCurrent: " wndDpiCurrent ", wndDpiNew: " wndDpiNew
                     wndScale := wndDpiNew / wndDpiCurrent
                     wndDpiCurrent := wndDpiNew
                     KDE_WinW := ceil(KDE_WinW * wndScale)
                     KDE_WinH := ceil(KDE_WinH * wndScale)
                 }
             }
-            if (ScalePerMonitorAreaDPI = 1)
+            If (ScalePerMonitorAreaDPI = 1)
             {
-                GetCurrentScreenBorders(ceil(KDE_WinX2+KDE_WinW/2),ceil(KDE_WinY2+KDE_WinH/2), l, r, t, b)
-                monWidthNew  := r-l, monHeightNew := b-t
+                GetCurrentScreenBorders(KDE_WinX2 + (KDE_WinW>>1),KDE_WinY2 + (KDE_WinH>>1), scrleft, scrright, scrtop, scrbottom)
+                scrWidthNew  := scrright - scrleft, scrHeightNew := scrbottom - scrtop
                 
-                if (monWidthNew != monWidthCurrent)
+                If (scrWidthNew != scrWidthCurrent)
                 {
-                    KDE_WinW := ceil(KDE_WinW * monWidthNew / monWidthCurrent )
-                    monWidthCurrent := monWidthNew
+                    KDE_WinW := ceil(KDE_WinW * scrWidthNew / scrWidthCurrent)
+                    scrWidthCurrent := scrWidthNew
                 }
-                if (monHeightNew != monHeightCurrent)
+                If (scrHeightNew != scrHeightCurrent)
                 {
-                    KDE_WinH := ceil(KDE_WinH * monHeightNew / monHeightCurrent)
-                    monHeightCurrent := monHeightNew
+                    KDE_WinH := ceil(KDE_WinH * scrHeightNew / scrHeightCurrent)
+                    scrHeightCurrent := scrHeightNew
                 }
             }
         }
 
-
-        if (QuickPosition_Button_wasUp AND GetKeyState( QuickPosition_Hotkey2 , "P" ))   ; no regular moving, but quickly snap and resize window to screen edge/corner
+        If (QuickPosition_Button_wasUp AND GetKeyState( QuickPosition_Hotkey2 , "P" ))   ; no regular moving, but quickly snap and resize window to screen edge/corner
         {
             ; Mask menu. May otherwise temporarily freeze WinMove/WinResize/Quick-Position after KDE Mover-Sizer option change, even if in background
-            if QuickPosition_wasActive = 0
+            If QuickPosition_wasActive = 0
             {
                 If (QuickPosition_Hotkey2 = "LWin" OR QuickPosition_Hotkey2 = "Alt")
                     SendEvent {Blind}{LControl}  ; Do this for LWin and Alt hotkeys
@@ -1450,10 +1457,10 @@ DoMovingWindowMinimize:
             }
             QuickPositionWindowOnEdge(MouseX,MouseY, KDE_WinX2, KDE_WinY2, KDE_WinW2, KDE_WinH2,  KDE_WinOffX, KDE_WinOffY, KDE_WinOffW, KDE_WinOffH )
         }
-        else
+        Else
         {
             ; Mask menu. May otherwise temporarily freeze WinMove/WinResize/Quick-Position after changing option through KDE Mover-Sizer icon, even if in background
-            if QuickPosition_wasActive
+            If QuickPosition_wasActive
             {
                 If (QuickPosition_Hotkey2 = "LWin" OR QuickPosition_Hotkey2 = "Alt")
                     SendEvent {Blind}{LControl}  ; Do this for LWin and Alt hotkeys
@@ -1464,34 +1471,34 @@ DoMovingWindowMinimize:
             KDE_X2 -= KDE_X1    ; Obtain an offset from the initial mouse position.
             KDE_Y2 -= KDE_Y1
             
-            if ( LockHorizVert_Button_wasUp AND GetKeyState( LockHorizVert_Hotkey2 , "P" ) )     ; lock mouse to horizontal or vertical movements
+            If ( LockHorizVert_Button_wasUp AND GetKeyState( LockHorizVert_Hotkey2 , "P" ) )     ; lock mouse to horizontal or vertical movements
             {
-                if ( abs(KDE_X2) - abs(KDE_Y2) > 0 )
+                If ( abs(KDE_X2) - abs(KDE_Y2) > 0 )
                     KDE_Y2 := 0 ; lock Y
-                else
+                Else
                     KDE_X2 := 0 ; lock X
             }
             KDE_WinX2 := (KDE_WinX1 + KDE_X2) ; Apply this offset to the window position.
             KDE_WinY2 := (KDE_WinY1 + KDE_Y2)
     
             ; get current screen boarders for snapping, do this within the loop to allow snapping an all monitors without releasing button
-            GetCurrentScreenBorders(MouseX,MouseY, CurrentScreenLeft, CurrentScreenRight, CurrentScreenTop, CurrentScreenBottom)
+            GetCurrentScreenBorders(KDE_WinX2 + (KDE_WinW>>1),KDE_WinY2 + (KDE_WinH>>1), CurrentScreenLeft, CurrentScreenRight, CurrentScreenTop, CurrentScreenBottom)
 
-            if SnapOnMoveEnabled
+            If SnapOnMoveEnabled
             {
-                if (     KDE_WinX2 - KDE_WinOffX < CurrentScreenLeft + SnappingDistance)
+                If (     KDE_WinX2 - KDE_WinOffX < CurrentScreenLeft + SnappingDistance)
                     AND (KDE_WinX2 - KDE_WinOffX > CurrentScreenLeft - SnappingDistance)
                         KDE_WinX2 := CurrentScreenLeft + KDE_WinOffX
 
-                if (     KDE_WinY2 - KDE_WinOffY < CurrentScreenTop + SnappingDistance)
+                If (     KDE_WinY2 - KDE_WinOffY < CurrentScreenTop + SnappingDistance)
                     AND (KDE_WinY2 - KDE_WinOffY > CurrentScreenTop - SnappingDistance)
                         KDE_WinY2 := CurrentScreenTop + KDE_WinOffY
 
-                if (     KDE_WinX2 - KDE_WinOffX  + KDE_WinW - KDE_WinOffW > CurrentScreenRight - SnappingDistance)
+                If (     KDE_WinX2 - KDE_WinOffX  + KDE_WinW - KDE_WinOffW > CurrentScreenRight - SnappingDistance)
                     AND (KDE_WinX2 - KDE_WinOffX  + KDE_WinW - KDE_WinOffW < CurrentScreenRight + SnappingDistance)
                         KDE_WinX2 := CurrentScreenRight  - KDE_WinW + KDE_WinOffW + KDE_WinOffX
 
-                if (     KDE_WinY2 + KDE_WinH - KDE_WinOffH > CurrentScreenBottom - SnappingDistance)
+                If (     KDE_WinY2 + KDE_WinH - KDE_WinOffH > CurrentScreenBottom - SnappingDistance)
                     AND (KDE_WinY2 + KDE_WinH - KDE_WinOffH < CurrentScreenBottom + SnappingDistance)
                         KDE_WinY2 := CurrentScreenBottom - KDE_WinH + KDE_WinOffH + KDE_WinOffY
             }
@@ -1510,8 +1517,11 @@ DoMovingWindowMinimize:
             if ShowWindowWhenDragging = 0
                 WinMove, ahk_id %KDE_id%,, (KDE_WinX2 + KDE_WinOffFrameX), (KDE_WinY2 + KDE_WinOffFrameY), (KDE_WinW2 + KDE_WinOffFrameW), (KDE_WinH2 + KDE_WinOffFrameH) ; Move the window to the new position.
         }
+        
+        ;Tooltip, % A_TickCount " QP HK pressed: " GetKeyState( QuickPosition_Hotkey2 , "P" ) ", QuickPosition_Button_wasUp: " QuickPosition_Button_wasUp ", QuickPosition_wasActive: " QuickPosition_wasActive
+        
     } ; END OF MOVING LOOP
-
+    ;Tooltip,
     ; ************************
     ; * Cleanup after Moving
 
@@ -1519,20 +1529,16 @@ DoMovingWindowMinimize:
     {
         ; If we move a MONITOR_AWARE window to a different screen for the first time, Windows will scale automatically _after_ our move command,
         ; so our (already scaled) width and height will no longer match.
-        ; -> for this case, pre-(un)scale width and height and let windows do the scaling
-        if ( wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE )
-        {
-            wndDpiNew := GetMonitorDpiFromRect(KDE_WinX2,KDE_WinY2, KDE_WinW2,KDE_WinH2)
-            if (wndDpiNew != wndDpiOriginal)
-            {
-                wndScale := wndDpiOriginal / wndDpiNew
-                KDE_WinW2 := ceil(KDE_WinW2 * wndScale)
-                KDE_WinH2 := ceil(KDE_WinH2 * wndScale)
-            }
-        }
+        ; For this case, we could pre-(un)scale width and height and let windows do the scaling
+        ; But this was not possible for ScalePerMonitorAreaDPI -> Just draw the window twice
+
         DrawRectFrame_Cancel()
         If Esc_Button = U
-            WinMove, ahk_id %KDE_id%,, (KDE_WinX2 + KDE_WinOffFrameX), (KDE_WinY2 + KDE_WinOffFrameY), (KDE_WinW2 + KDE_WinOffFrameW), (KDE_WinH2 + KDE_WinOffFrameH) ; Move the window to the new position.
+        {
+            ; Move the window to the new position.
+            WinMove, ahk_id %KDE_id%,, (KDE_WinX2 + KDE_WinOffFrameX), (KDE_WinY2 + KDE_WinOffFrameY), (KDE_WinW2 + KDE_WinOffFrameW), (KDE_WinH2 + KDE_WinOffFrameH)
+            WinMove, ahk_id %KDE_id%,, (KDE_WinX2 + KDE_WinOffFrameX), (KDE_WinY2 + KDE_WinOffFrameY), (KDE_WinW2 + KDE_WinOffFrameW), (KDE_WinH2 + KDE_WinOffFrameH)
+        }
     }
 
     If BorderlessSnappingAndDPI
@@ -2600,12 +2606,6 @@ DragScrollMouseHook(nCode, wParam, lParam) {
 ; but then this also happened a few times on SendMode Event -> better stay with PostMessage
 ; FastAccel: a(x-50+1/(2a))^2+50-1/(4a)  (for b=MinMouseSpeed = 50)  -> not good. jumps if called in irregular intervals ==> a(x-b)+b
 DragScrollHandler:
-    ;MBwmID := WM_MOUSEWHEEL
-    ;If GetKeyState(DragScroll_HorizKey, "P")
-    ;{
-    ;    MBwmID := WM_MOUSEHWHEEL
-    ;    DragScrollMouseMove *= -1
-    ;}
     If DragScrollInvertScrollDirection
         DragScrollMouseMove *= -1
     If ( abs( DragScrollMouseMove ) < DragScrollMinMousespeedForFastAccel )
@@ -2616,7 +2616,6 @@ DragScrollHandler:
         dsDelta := a*(abs(DragScrollMouseMove) - b) +b
         If DragScrollMouseMove > 0
             dsDelta *= -1
-        ;Tooltip, % "a:" a " b:" b " dsDelta:" dsDelta " scrollOffset:" scrollOffset
         scrollOffset := DragScrollWindowWantsFullStepIncrement ? WHEEL_DELTA * round(dsDelta //DragScrollSpeedDivider) 
                                                         :  round(WHEEL_DELTA *       dsDelta //DragScrollSpeedDivider)
     }
@@ -2948,10 +2947,10 @@ DrawRectFrame_Prepare()
 DrawRectFrame_Show( X, Y, W, H )
 {
     global DrawGridWidth
-    X3 := X -2  ; +KDE_WinOffFrameX
-    Y3 := Y -2  ; +KDE_WinOffFrameY
-    W3 := W     ; +KDE_WinOffFrameW
-    H3 := H     ; +KDE_WinOffFrameH
+    X3 := X -2
+    Y3 := Y -2
+    W3 := W
+    H3 := H
     
     Gui, 1: Show, % "x" X3    " y" Y3    " w" DrawGridWidth+1 " h" H3     " NoActivate"
     Gui, 2: Show, % "x" X3    " y" Y3    " w" W3              " h" DrawGridWidth+1 " NoActivate"
