@@ -24,7 +24,9 @@
 ;   Reason is that having the Mouse Cursor on a different screen than the Window Center causes inconsistent Win/AHK-internal DPI-scaling
 
 ;   Itstory:
-;   Mar  29, 2026:      Added: For Drag-Scrolling, set a minimum distance to determine direction and start scrolling
+;   Mar  29, 2026:      Added: Option (.ini-only) to toggle Always-on-Top with Double-Alt + Hotkey (instead of WinClose).
+;                       Added: QuickPosition ratios and snapping-grid sizes are now configurable through .ini file
+;                       Added: For Drag-Scrolling, set a minimum distance to determine direction and start scrolling
 ;                       Added: Option to scale window relative to screen area when moving windows between monitors
 ;                              Enabled: scale the window to keep the same relative size between monitors, i.e. if a window fills 1/4 on the original screen,
 ;                                       it is scaled to alwo fill 1/4 of the destination screen (if the application allows it)
@@ -147,6 +149,7 @@ global WM_MOUSEWHEEL  := 0x20A  ; Window message used for vertical scrolling, ty
 global WM_MOUSEHWHEEL := 0x20E  ; Window message used for horizontal scrolling, typ.mulitiples of 16
 
 global MSGBOX_HAND              := 0x10
+global MSGBOX_HAND_ABRTRETRYIGNORE := 0x12
 global MSGBOX_QUESTION_OKCANCEL := 0x21
 global MSGBOX_EXCLAMATION       := 0x30
 global MSGBOX_EXCLAMATION_YESNO := 0x34
@@ -219,9 +222,18 @@ MaxVersion := "1.1.26.01"
 
 If (A_AhkVersion < MinVersion OR A_AhkVersion > MaxVersion OR A_PtrSize != 4)
 {
-    MsgBox, % MSGBOX_EXCLAMATION_YESNO,,This script may not work properly with your version of AutoHotkey. Requirement:`n- 32bit AHK Version`n- Minimum AHK Version: %MinVersion%`n- Maximum AHK Version: %MaxVersion%`n`nContinue?
-    IfMsgBox, No
+    MsgBox, % MSGBOX_HAND_ABRTRETRYIGNORE,, % "This script may not work properly with your version of AutoHotkey. Requirement:`n- 32bit AHK Version`n"
+        . "- Minimum AHK Version: %MinVersion%`n"
+        . "- Maximum AHK Version: %MaxVersion%`n`n"
+        . "Click Retry to open https://www.autohotkey.com/download/1.1/AutoHotkey_1.1.26.01.zip for update."
+    IfMsgBox, Abort
         ExitApp
+    else IfMsgBox, Retry
+    {
+        Run, https://www.autohotkey.com/download/1.1/AutoHotkey_1.1.26.01.zip
+        MsgBox, % MSGBOX_INFO,, Now update Autohotkey and restart.
+        ExitApp
+    }
 }
 
 DefaultEnableFocuslessScroll    := 0   ; This is usually no longer required for Win10+..except when running very old SW, such as Office 2010, which still requires this option. So we don't hide it, just disable it by default.
@@ -335,7 +347,7 @@ ReadIniFile:
     IniWrite, %SnapOnMoveEnabled%,       KDE_Mover-Sizer.ini, Settings, SnapOnMoveEnabled
     IniRead,   BorderlessSnappingAndDPI, KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI, %DefaultBorderlessSnappingAndDPI%
     IniWrite, %BorderlessSnappingAndDPI%,KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI
-    IniRead,   ScalePerMonitorArea,      KDE_Mover-Sizer.ini, Settings, ScalePerMonitorArea, 0;       ; default: false:keep same amount of window content. true:resize to match relative monitor area
+    IniRead,   ScalePerMonitorArea,      KDE_Mover-Sizer.ini, Settings, ScalePerMonitorArea, 0        ; default: false:keep same amount of window content. true:resize to match relative monitor area
     IniWrite, %ScalePerMonitorArea%,     KDE_Mover-Sizer.ini, Settings, ScalePerMonitorArea
     IniRead,   SnapOnResizeMagnetic,     KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic, 0       ; default: false
     IniWrite, %SnapOnResizeMagnetic%,    KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic
@@ -345,6 +357,11 @@ ReadIniFile:
     IniWrite, %Use3x3ResizeGrid%,        KDE_Mover-Sizer.ini, Settings, Use3x3ResizeGrid
     IniRead,   DoubleAltShortcuts,       KDE_Mover-Sizer.ini, Settings, DoubleAltShortcuts,  1        ; default: true
     IniWrite, %DoubleAltShortcuts%,      KDE_Mover-Sizer.ini, Settings, DoubleAltShortcuts
+    IniRead,   DoubleAlt_MaxDelay_ms,    KDE_Mover-Sizer.ini, Settings, DoubleAlt_MaxDelay_ms, 400
+    IniWrite, %DoubleAlt_MaxDelay_ms%,   KDE_Mover-Sizer.ini, Settings, DoubleAlt_MaxDelay_ms
+    IniRead,   DoubleAltMButton_ToggleOnTop,  KDE_Mover-Sizer.ini, Settings, DoubleAltMButton_ToggleOnTop,  0        ; default: false (DoubleALt+MButton does WinClose). True: instead, toggle Always-On-Top
+    IniWrite, %DoubleAltMButton_ToggleOnTop%, KDE_Mover-Sizer.ini, Settings, DoubleAltMButton_ToggleOnTop
+    
     IniRead,   BringWindowToFront,       KDE_Mover-Sizer.ini, Settings, BringWindowToFront,  0        ; default: false (true: automatically brings window to front on drag)
     IniWrite, %BringWindowToFront%,      KDE_Mover-Sizer.ini, Settings, BringWindowToFront
     IniRead,   ShowWindowWhenDragging,   KDE_Mover-Sizer.ini, Settings, ShowWindowWhenDragging,  1    ; default: true
@@ -355,9 +372,6 @@ ReadIniFile:
     ; you may want to raise or lower this value.. System default: 100
     IniRead,   WinDelay,                KDE_Mover-Sizer.ini, Settings, WinDelay, 2
     IniWrite, %WinDelay%,               KDE_Mover-Sizer.ini, Settings, WinDelay
-
-    IniRead,   DoubleModifierKey_MaxDelay_ms,  KDE_Mover-Sizer.ini, Settings, DoubleModifierKey_MaxDelay_ms, 400
-    IniWrite, %DoubleModifierKey_MaxDelay_ms%, KDE_Mover-Sizer.ini, Settings, DoubleModifierKey_MaxDelay_ms
     IniRead,   WindowIgnoreList,        KDE_Mover-Sizer.ini, Settings, WindowIgnoreList, %DefaultWindowIgnoreList%   ; Windows excluded for dragging (default: Windows Desktop tools)
     IniWrite, %WindowIgnoreList%,       KDE_Mover-Sizer.ini, Settings, WindowIgnoreList
     IniRead,   RunAsAdministrator,      KDE_Mover-Sizer.ini, Settings, RunAsAdministrator, 0           ; default: run as normal user
@@ -404,6 +418,24 @@ ReadIniFile:
     IniWrite,'%DragScroll_Hotkey%',     KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Hotkey
     IniRead,   DragScroll_Mouse,        KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Mouse, MButton        ; MButton, LControl, ...
     IniWrite, %DragScroll_Mouse%,       KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Mouse
+
+    ; Settings for QuickPositionWindowOnEdge.
+    IniRead,   QuickPosition_EdgeSize_1,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_1, 0.125   ; QuickPosition "snapping" borders inside screen
+    IniWrite, %QuickPosition_EdgeSize_1%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_1
+    IniRead,   QuickPosition_EdgeSize_2,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_2, 0.25
+    IniWrite, %QuickPosition_EdgeSize_2%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_2
+    IniRead,   QuickPosition_EdgeSize_3,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_3, 0.333
+    IniWrite, %QuickPosition_EdgeSize_3%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_3
+    IniRead,   QuickPosition_EdgeSize_4,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_4, 0.382
+    IniWrite, %QuickPosition_EdgeSize_4%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_4
+    IniRead,   QuickPosition_EdgeSize_5,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_5, 0.5
+    IniWrite, %QuickPosition_EdgeSize_5%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_5
+    IniRead,   QuickPosition_CenterSize_1,  KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Inner,  0.333  ; Window size of one edge, relative to screen size for inner center
+    IniWrite, %QuickPosition_CenterSize_1%, KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Inner
+    IniRead,   QuickPosition_CenterSize_2,  KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Middle, 0.5    ; Window size of one edge, relative to screen size for middle center ring
+    IniWrite, %QuickPosition_CenterSize_2%, KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Middle
+    IniRead,   QuickPosition_CenterSize_3,  KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Outer,  0.708  ; Window size of one edge, relative to screen size for outer center ring (1 - 2*0.382*0.382) 
+    IniWrite, %QuickPosition_CenterSize_3%, KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Outer
 
     ; Settings for Draw Grid and colour sampler
     ;
@@ -488,6 +520,59 @@ ReadIniFile:
         . "and cannot be enabled or changed."
     }
     return
+
+; ************************************************************************
+; ********* INIT: Prepare variables for Quick-Position-Window-On-Edge ****
+; ************************************************************************
+;
+; 
+InitQuickPositionWindowOnEdge:
+    ; Init QuickPosition sizes for QuickPosition along screen edges. As they are symmetrical, they must be >0 and <0.5
+    ; Depending on user preferences, this can be reduced or extended to more or less QuickPosition "snapping" areas
+    QuickPosSize    := []
+    QuickPosSize[1] := 0 ; First element must be zero
+    sizecnt := 1 ; [1]=0 -> next free index is 2
+    
+    Loop, 20 {
+        IniRead, a_QuickPosition_Size,  KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_%A_Index%, %A_Space%
+        If !a_QuickPosition_Size
+            Break
+        sizecnt := sizecnt + 1
+        QuickPosSize[sizecnt] := a_QuickPosition_Size
+    }
+
+    ; Last line must be 0.5 - either read as part of the ini file or added here
+    If ((QuickPosSize[sizecnt]) != 0.5)
+    {
+        sizecnt := sizecnt + 1
+        QuickPosSize[sizecnt] := 0.5
+    }
+    
+    QuickPosNSize := sizecnt - 1            ; number of /non-zero/ QuickPos lines
+    QuickPosNSizex2 := QuickPosNSize * 2
+    QuickPosNSizex4 := QuickPosNSize * 4
+    
+    ; Init for Center offsets and sizes.
+    ; NOTE: We're fixed to 3 different center sizes
+    
+    ; Center areas (relative to screen width/height)
+    QuickPosCenterSize := []
+    ;ctrdiv := 16  ; for NSizex4 ==20 -> extend it a little more (20-5. or 24-6)
+    ctrdiv := QuickPosNSizex4 - QuickPosNSize
+    QuickPosCenterSize[1] := 1/ctrdiv *0.33   ; inner center
+    QuickPosCenterSize[2] := 1/ctrdiv *0.66   ; middle center
+    QuickPosCenterSize[3] := 1/ctrdiv *1      ; outer center
+    
+    ; Windows sizes for the center areas
+    QuickPosCenterOff := []
+    QuickPosCenterLen := []
+    Loop, 3 {
+        QuickPosCenterLen[A_Index] := QuickPosition_CenterSize_%A_Index%
+        QuickPosCenterOff[A_Index] := (1 - QuickPosCenterLen[A_Index]) /2
+    }
+    
+    return
+
 
 ; ***************************************************************
 ; ********* INIT: Install MOUSE & KEY EVENT handler *************
@@ -764,7 +849,7 @@ MenuScalePerMonitorArea:
     If ScalePerMonitorArea
         Traytip, Maintain Window-to-Monitor ratio, Move across monitors will resize to keep the same window-to-screen-area ratio,30,%TRAYICON_NOSOUND%
     Else
-        Traytip, Meintain Window content, Move across monitors will resize to match different DPI settings and keep same amount of window content (Windows default),30,%TRAYICON_NOSOUND%
+        Traytip, Maintain Window content, Move across monitors will resize to match different DPI settings and keep same amount of window content (Windows default),30,%TRAYICON_NOSOUND%
 
     IniWrite, %ScalePerMonitorArea%, KDE_Mover-Sizer.ini, Settings, ScalePerMonitorArea
     return
@@ -1203,11 +1288,15 @@ MenuHideIcon:
 
 MenuAbout:
     DoubleAltShortcutsHelptext := ""
+    If DoubleAltMButton_ToggleOnTop
+        DoubleAltMButtonHelptext := "Toggle Always-on-Top."
+    Else
+        DoubleAltMButtonHelptext := "Close a window."
     If DoubleAltShortcuts
         DoubleAltShortcutsHelptext := ""
         . "    Double-" . strname(MovingWindow_Hotkey) . " + " . strname(MovingWindow_Mouse) . " Button   -> Minimize a window.`r`n"
         . "    Double-" . strname(ResizingWindow_Hotkey) . " + " . strname(ResizingWindow_Mouse) . " Button  -> Maximize/Restore a window.  `r`n"
-        . "    Double-" . strname(ToggleMaximize_Hotkey) . " + " . strname(ToggleMaximize_Mouse) . " Button -> Close a window.`r`n"
+        . "    Double-" . strname(ToggleMaximize_Hotkey) . " + " . strname(ToggleMaximize_Mouse) . " Button -> " . DoubleAltMButtonHelptext . "`r`n"
         . "`r`n"
 
     MsgBox,4,About KDE Mover-Sizer.., % "KDE Mover-Sizer..                                                Version 2.12 (March, 2026)`r`n"
@@ -1975,16 +2064,21 @@ DoToggleMaximize:
         return
     }
 
-    ; For Double-Alt + middle Button: Close Window
+    ; For Double-Alt + middle Button: Close Window or Toggle Alway-On-Top
     ;
     If DoubleAlt
     {
         ; Workaround in case an Mouse-XButton is our hotkey (MenuHotkey_XButtons) to avoid accidentally minimizing windows
         ; -> When there is no (modifier) hotkey, only do DoubleAlt-Action within 5secs of the DoubleAlt
-        if ( ToggleMaximize_Hotkey != "" OR A_TimeSincePriorHotkey < 5000 )  ; ignore DoubleAlt when there is no modifier hotkey for and it has occurred more than 5sec ago
+        If ( ToggleMaximize_Hotkey != "" OR A_TimeSincePriorHotkey < 5000 )  ; ignore DoubleAlt when there is no modifier hotkey for and it has occurred more than 5sec ago
         {
             MouseGetPos, ,,KDE_id
-            WinClose, ahk_id %KDE_id%
+            If DoubleAltMButton_ToggleOnTop {
+                Traytip, Toggle Always-on-Top, Window toggled between "always in foreground" and normal behaviour.,30,,%TRAYICON_NOSOUND%
+                WinSet AlwaysOnTop, Toggle, ahk_id %KDE_id%
+            }
+            Else
+                WinClose, ahk_id %KDE_id%
         }
         DoubleAlt := 0
         return
@@ -2021,7 +2115,7 @@ OnDoubleKey:
     if DoubleKeyBypass
         return
 
-    DoubleAlt := A_PriorHotKey = "~"DoubleKey_Hotkey2 AND A_TimeSincePriorHotkey < DoubleModifierKey_MaxDelay_ms
+    DoubleAlt := A_PriorHotKey = "~"DoubleKey_Hotkey2 AND A_TimeSincePriorHotkey < DoubleAlt_MaxDelay_ms
    
     ; give (start) menu time to for "Win Down" to arrive, so we send "Esc" before "Win Up", so it never appears.
     ; Sleep here seems to make move/resize-hotkey more stable, so keep it outside the "if DoubleAlt" for now
@@ -2616,8 +2710,6 @@ DragScrollQPCus(R := 0) {
 ; *************  ACTION Helper: Quickly position and resize window on edge/grid during Move/Resize ***************
 ; ****************************************************************************************************************
 
-QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2, WinOffX, WinOffY, WinOffW, WinOffH)
-{
     ; Resize&Snapping Areas:
     ; Off   X,Y  W,H  QkSize X,Y    W,H  Off_l
     ;  0    0     1/8   =[1]  [0]     [1]   1
@@ -2641,18 +2733,26 @@ QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2,
     ; 18/20 3/4   1/4       1-W,H     [2]   2
     ; 19/20 7/8   1/8       1-W,H     [1]   1
 
-    static QuickSize0 := 0
-    , QuickSize1 := 1/8
-    , QuickSize2 := 1/4
-    , QuickSize3 := 1/3
-    , QuickSize4 := 0.382
-    , QuickSize5 := 1/2
+    ;static QuickSize0 := 0
+    ;, QuickSize1 := 1/8
+    ;, QuickSize2 := 1/4
+    ;, QuickSize3 := 1/3
+    ;, QuickSize4 := 0.382
+    ;, QuickSize5 := 1/2
 
-    ; Center: (at 7/16 <= .. < 9/16)
+    ; Center: (at 7/16 <= .. < 9/16)  -> *QuickPosCenterSize[1..3]
     ; Off X+Y  X=Y, W=H
     ;  outer:       1
     ;  middle:      0.66
     ;  inner:       0.333
+    ;                       inner  middle  outer
+    ; QuickPosCenterOff :=  0.33   0.25    0.382*0.382
+    ; QuickPosCenterLen :=  0.33   0.5     1 - 2*0.382*0.382
+
+QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2, WinOffX, WinOffY, WinOffW, WinOffH)
+{
+    ; AHK arrays start at 1, but we still use the old ac^
+    global QuickPosSize, QuickPosNSize, QuickPosNSizex2, QuickPosNSizex4, QuickPosCenterSize, QuickPosCenterOff, QuickPosCenterLen
 
     GetCurrentScreenBorders(MouseX, MouseY, scrLeft, scrRight, scrTop, scrBottom)
     
@@ -2672,66 +2772,65 @@ QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2,
     WinCenterX := MouseX - scrLeft
     WinCenterY := MouseY - scrTop
     
-    OffX := Floor( (20 * WinCenterX) / scrWidth)  ; floor divide to obtain OffX 0..19
-    OffY := Floor( (20 * WinCenterY) / scrHeight) ; floor divide to obtain OffY 0..19
+    OffX := Floor( (QuickPosNSizex4 * WinCenterX) / scrWidth)  ; floor divide to obtain OffX 0..19
+    OffY := Floor( (QuickPosNSizex4 * WinCenterY) / scrHeight) ; floor divide to obtain OffY 0..19
     
     OffX_l := OffX + 1
     OffY_l := OffY + 1
-    if ( OffX >= 10 )
-        OffX_l := 20 - OffX
-    if ( OffY >= 10 )
-        OffY_l := 20 - OffY
+    if ( OffX >= QuickPosNSizex2 )
+        OffX_l := QuickPosNSizex4 - OffX
+    if ( OffY >= QuickPosNSizex2 )
+        OffY_l := QuickPosNSizex4 - OffY
 
-    M8mOffX_l := 10 - OffX_l
-    M8mOffY_l := 10 - OffY_l
+    M8mOffX_l := QuickPosNSizex2 - OffX_l
+    M8mOffY_l := QuickPosNSizex2 - OffY_l
     
-    if (     abs(WinCenterX - scrWidth /2) < scrWidth /16*0.33  
-         AND abs(WinCenterY - scrHeight/2) < scrHeight/16*0.33  )            ; is the inner center
+    if (     abs(WinCenterX - scrWidth /2) < scrWidth  *QuickPosCenterSize[1]
+         AND abs(WinCenterY - scrHeight/2) < scrHeight *QuickPosCenterSize[1] )            ; is the inner center
     { 
-        X2 := scrLeft + 0.33 * scrWidth
-        Y2 := scrTop  + 0.33 * scrHeight
-        W2 := scrWidth  * 0.33
-        H2 := scrHeight * 0.33
+        X2 := scrLeft + QuickPosCenterOff[1] * scrWidth
+        Y2 := scrTop  + QuickPosCenterOff[1] * scrHeight
+        W2 := scrWidth  * QuickPosCenterLen[1]
+        H2 := scrHeight * QuickPosCenterLen[1]
     }
-    else if (     abs(WinCenterX - scrWidth /2) < scrWidth /16*0.66  
-              AND abs(WinCenterY - scrHeight/2) < scrHeight/16*0.66  )       ; is the middle center
+    else if (     abs(WinCenterX - scrWidth /2) < scrWidth  *QuickPosCenterSize[2]
+              AND abs(WinCenterY - scrHeight/2) < scrHeight *QuickPosCenterSize[3] )       ; is the middle center
     {
-        X2 := scrLeft + 0.25 * scrWidth
-        Y2 := scrTop  + 0.25 * scrHeight
-        W2 := scrWidth  * 0.5
-        H2 := scrHeight * 0.5
+        X2 := scrLeft + QuickPosCenterOff[2] * scrWidth
+        Y2 := scrTop  + QuickPosCenterOff[2] * scrHeight
+        W2 := scrWidth  * QuickPosCenterLen[2]
+        H2 := scrHeight * QuickPosCenterLen[2]
     }
-    else if (     abs(WinCenterX - scrWidth /2) < scrWidth /16*1 
-              AND abs(WinCenterY - scrHeight/2) < scrHeight/16*1  )       ; is the outer center
+    else if (     abs(WinCenterX - scrWidth /2) < scrWidth  *QuickPosCenterSize[3]
+              AND abs(WinCenterY - scrHeight/2) < scrHeight *QuickPosCenterSize[3] )       ; is the outer center
     {
-        X2 := scrLeft + 0.382*0.382 * scrWidth
-        Y2 := scrTop  + 0.382*0.382 * scrHeight
-        W2 := scrWidth  * ( 1 - 2*0.382*0.382)
-        H2 := scrHeight * ( 1 - 2*0.382*0.382)
+        X2 := scrLeft + QuickPosCenterOff[3] * scrWidth
+        Y2 := scrTop  + QuickPosCenterOff[3] * scrHeight
+        W2 := scrWidth  * QuickPosCenterLen[3]
+        H2 := scrHeight * QuickPosCenterLen[3]
     }
     else                                                                 ; is one of the outer squares
     {
-        if ( OffX_l <= 5 )
-            W2 := scrWidth * QuickSize%OffX_l%
+        if ( OffX_l <= QuickPosNSize )
+            W2 := scrWidth * QuickPosSize[OffX_l +1]
         else
-            W2 := scrWidth * (1 - QuickSize%M8mOffX_l%)
+            W2 := scrWidth * (1 - QuickPosSize[M8mOffX_l +1])
             
-        if ( OffX < 10)
+        if ( OffX < QuickPosNSizex2)
             X2 := scrLeft
         else
             X2 := scrLeft +  scrWidth - W2
 
-        if ( OffY_l <= 5 )
-            H2 := scrHeight * QuickSize%OffY_l%
+        if ( OffY_l <= QuickPosNSize )
+            H2 := scrHeight * QuickPosSize[OffY_l +1]
         else
-            H2 := scrHeight * (1 - QuickSize%M8mOffY_l%)
+            H2 := scrHeight * (1 - QuickPosSize[M8mOffY_l +1])
             
-        if ( OffY < 10)
+        if ( OffY < QuickPosNSizex2)
             Y2 := scrTop
         else
             Y2 := scrTop +  scrHeight - H2
     }
-    
     ; extend coordinates to return the extended window position and size
     X2 := X2 + WinOffX
     Y2 := Y2 + WinOffY
