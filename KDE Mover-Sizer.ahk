@@ -23,12 +23,8 @@
 ; - Dragging SYSTEM_AWARE windows across monitors with different DPIs wrongly moves the window origin (causing even fluttering in a certain area) while the window is on both screens.
 ;   Reason is that having the Mouse Cursor on a different screen than the Window Center causes inconsistent Win/AHK-internal DPI-scaling
 
-; ToDo:
-; - Test for different (DoubleAlt-)hotkeys if Send {Blind} is really no longer necessary
-; - Add option to disable Horizontal dragging
-; - add fullpath to MenuHideIcon for kms ini File
-; - add comment to version check about the brittleness of Alt/DiubleAlt and Menu handling
 ;   Itstory:
+;   Mar  29, 2026:      Added: For Drag-Scrolling, set a minimum distance to determine direction and start scrolling
 ;   Feb  25, 2026:      Added: Correct scaling for moving PER_MONITOR_AWARE between monitors with different DPI.
 ;                              Hint if "Showing window contents while dragging" is disabled: press Control (WindowToFront) hotkey to force window update on current position
 ;                       Clean: Removed FocuslessScroll_Modifier. Never tested, never used
@@ -37,7 +33,7 @@
 ;                       Added: Press "Control" during Move/Resize to bring currently dragged Window to foreground
 ;                       Fixed: For MButton Drag Scroll: have separate Ignore-Window list and another list for applications that only support full-step scrolls (multiples of 120)
 ;                              Use this to fix issue that each first wheel up/down event is ignored once MButton scrolling was used
-;                              Also, in case of delayed or stuttering scroll, try increasing DragScrollMinUpdateInterval_us
+;                              Also, in case of delayed or stuttering scroll, try increasing DragScrollMinUpdatePeriod_us
 ;                       Added: DPI-aware Borderless snapping (consider invisible frame border around a window) during Snap-to-Border or QuickPosition-to-grid
 ;                       Added: Option to Run as administrator with elevated permissions
 ;                       Added: Create and remove shortcut link in startup folder for autostart
@@ -72,7 +68,7 @@
 ;                           only works for ASCII/ANSII character set. No Unicode (UTF-8/UTF-16/...)!
 ;   Aug   1, 2012:      Changed default for LWin hotkey, ShowMeasuresAsTooltip=1, DrawGridShowDistance=1
 ;                       Changed default for AltGr: DrawGridOverlay_Hotkey=<^>!+
-;   July 27, 2012:      Fixed: send DoubleKey_hotkey2 after execution of hotkey action
+;   July 27, 2012:      Fixed: send DoubleKey_Hotkey2 after execution of hotkey action
 ;   July 22, 2012:      Added option to disable Double-Alt shortcuts
 ;                       Fixed loop performance issues and window redraw for DrawGrid
 ;   July 19, 2012:      Added option to show grid measurements as a ToolTip (for folk with balloon tips disabled)
@@ -136,6 +132,34 @@
 ;   NOTE: If your application wants the Alt key for hotkey modifiers, use Alt+Win+Key for that.
 ;   It's quite easy once you do it a few times, simply roll your thumb and finger on and off.
 
+;***********************
+; Global Constants
+;***********************
+
+global WHEEL_DELTA    := 120 ; This is a windows constant, which is the equivalent for 1 Wheel Up/Down event
+global WM_MOUSEWHEEL  := 0x20A  ; Window message used for vertical scrolling, typ.multiples of 4
+global WM_MOUSEHWHEEL := 0x20E  ; Window message used for horizontal scrolling, typ.mulitiples of 16
+
+global MSGBOX_HAND              := 0x10
+global MSGBOX_QUESTION_OKCANCEL := 0x21
+global MSGBOX_EXCLAMATION       := 0x30
+global MSGBOX_EXCLAMATION_YESNO := 0x34
+global MSGBOX_INFO              := 0x40
+global TRAYICON_INFO    :=  0x1
+global TRAYICON_WARNING :=  0x2
+global TRAYICON_ERROR   :=  0x3
+global TRAYICON_NOSOUND := 0x10
+
+global DPI_AWARENESS_CONTEXT_UNAWARE              := -1
+global DPI_AWARENESS_CONTEXT_SYSTEM_AWARE         := -2
+global DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    := -3
+global DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 := -4
+global DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED    := -5
+global DPI_AWARENESS_INVALID           := -1
+global DPI_AWARENESS_UNAWARE           := 0
+global DPI_AWARENESS_SYSTEM_AWARE      := 1
+global DPI_AWARENESS_PER_MONITOR_AWARE := 2
+
 
 ;***********************
 ; Prepare Default configuration and do basic version checks
@@ -189,7 +213,7 @@ MaxVersion := "1.1.26.01"
 
 If (A_AhkVersion < MinVersion OR A_AhkVersion > MaxVersion OR A_PtrSize != 4)
 {
-    MsgBox, 0x34,,This script may not work properly with your version of AutoHotkey. Requirement:`n- 32bit AHK Version`n- Minimum AHK Version: %MinVersion%`n- Maximum AHK Version: %MaxVersion%`n`nContinue?
+    MsgBox, % MSGBOX_EXCLAMATION_YESNO,,This script may not work properly with your version of AutoHotkey. Requirement:`n- 32bit AHK Version`n- Minimum AHK Version: %MinVersion%`n- Maximum AHK Version: %MaxVersion%`n`nContinue?
     IfMsgBox, No
         ExitApp
 }
@@ -235,31 +259,6 @@ Gosub, ReadIniFile
 ; Global settings and variables
 ; ***********************************
 
-; Global Constants
-global WHEEL_DELTA    := 120 ; This is a windows constant, which is the equivalent for 1 Wheel Up/Down event
-global WM_MOUSEWHEEL  := 0x20A  ; Window message used for vertical scrolling, typ.multiples of 4
-global WM_MOUSEHWHEEL := 0x20E  ; Window message used for horizontal scrolling, typ.mulitiples of 16
-
-global MSGICON_HAND              := 0x10
-global MSGICON_QUESTION_OKCANCEL := 0x21
-global MSGICON_EXCLAMATION       := 0x30
-global MSGICON_INFO              := 0x40
-global TRAYICON_INFO    :=  0x1
-global TRAYICON_WARNING :=  0x2
-global TRAYICON_ERROR   :=  0x3
-global TRAYICON_NOSOUND := 0x10
-
-global DPI_AWARENESS_CONTEXT_UNAWARE              := -1
-global DPI_AWARENESS_CONTEXT_SYSTEM_AWARE         := -2
-global DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    := -3
-global DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 := -4
-global DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED    := -5
-global DPI_AWARENESS_INVALID           := -1
-global DPI_AWARENESS_UNAWARE           := 0
-global DPI_AWARENESS_SYSTEM_AWARE      := 1
-global DPI_AWARENESS_PER_MONITOR_AWARE := 2
-
-
 ;SendMode Input  ; Recommended for new scripts due to its superior speed and reliability. (jlr)
                  ; But SendMode Input also causess "Mouse Key Up" events being lost sometimes (even to GetKeyState),
                  ; resulting in a stuck DragScroll mode despite no button is pressed
@@ -286,7 +285,7 @@ if (RunAsAdministrator = 1 AND A_IsAdmin = 0)
     Run, % "*RunAs " (A_IsCompiled ? "" : A_AhkPath " ") Chr(34) A_ScriptFullPath Chr(34),,UseErrorLevel
     If ErrorLevel
     {
-        MsgBox, % MSGICON_EXCLAMATION, Run as Administrator failed, % "Failed to run with Administrator permissions.`r`nWill continue running as normal user...`r`n"
+        MsgBox, % MSGBOX_EXCLAMATION, Run as Administrator failed, % "Failed to run with Administrator permissions.`r`nWill continue running as normal user...`r`n"
 
         RunAsAdministrator := 0
         IniWrite, %RunAsAdministrator%, KDE_Mover-Sizer.ini, Settings, RunAsAdministrator
@@ -325,6 +324,8 @@ ReadIniFile:
     IniWrite, %SnapOnMoveEnabled%,       KDE_Mover-Sizer.ini, Settings, SnapOnMoveEnabled
     IniRead,   BorderlessSnappingAndDPI, KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI, %DefaultBorderlessSnappingAndDPI%
     IniWrite, %BorderlessSnappingAndDPI%,KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI
+    IniRead,   ScalePerMonitorAreaDPI,   KDE_Mover-Sizer.ini, Settings, ScalePerMonitorAreaDPI, 0;    ; default: false:keep same amount of window content. true:resize to match relative monitor area (DPI-only)
+    IniWrite, %ScalePerMonitorAreaDPI%,  KDE_Mover-Sizer.ini, Settings, ScalePerMonitorAreaDPI
     IniRead,   SnapOnResizeMagnetic,     KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic, 0       ; default: false
     IniWrite, %SnapOnResizeMagnetic%,    KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic
     IniRead,   DoRestoreOnResize,        KDE_Mover-Sizer.ini, Settings, DoRestoreOnResize,  1         ; default: true
@@ -425,15 +426,17 @@ ReadIniFile:
     IniRead,   EnableDragScroll,        KDE_Mover-Sizer.ini, Special, EnableDragScroll, 1              ; default: enabled
     IniWrite, %EnableDragScroll%,       KDE_Mover-Sizer.ini, Special, EnableDragScroll
 
+    IniRead,   DragScrollMinStartDistance,           KDE_Mover-Sizer.ini, Special, DragScrollMinStartDistance, 3            ; this many pixels offset are required to determine direction and start drag-scrolling
+    IniWrite, %DragScrollMinStartDistance%,          KDE_Mover-Sizer.ini, Special, DragScrollMinStartDistance
+    IniRead,   DragScrollSpeedDivider,               KDE_Mover-Sizer.ini, Special, DragScrollSpeedDivider, 8                ; mouse must travel this many pixels for one full wheel scrollstep of 120
+    IniWrite, %DragScrollSpeedDivider%,              KDE_Mover-Sizer.ini, Special, DragScrollSpeedDivider
     IniRead,   DragScrollMinMousespeedForFastAccel,  KDE_Mover-Sizer.ini, Special, DragScrollMinMousespeedForFastAccel, 40  ; if mouse is moved fast (i.e. pixel distance is larger than this value), increase scroll step
     IniWrite, %DragScrollMinMousespeedForFastAccel%, KDE_Mover-Sizer.ini, Special, DragScrollMinMousespeedForFastAccel
     IniRead,   DragScrollFastAccelMultiplier,        KDE_Mover-Sizer.ini, Special, DragScrollFastAccelMultiplier, 2.3       ; for fast mouse movements, increase scroll step by this factor
     IniWrite, %DragScrollFastAccelMultiplier%,       KDE_Mover-Sizer.ini, Special, DragScrollFastAccelMultiplier
-    IniRead,   DragScrollSpeedDivider,               KDE_Mover-Sizer.ini, Special, DragScrollSpeedDivider, 8                ; this many pixels are required for one full wheel scrollstep of 120
-    IniWrite, %DragScrollSpeedDivider%,              KDE_Mover-Sizer.ini, Special, DragScrollSpeedDivider
-    IniRead,   DragScrollMinUpdateInterval_us,       KDE_Mover-Sizer.ini, Special, DragScrollMinUpdateInterval_us, 5000     ; at maximum 1 wheel scroll event is send during this period (unit microseconds)
-    IniWrite, %DragScrollMinUpdateInterval_us%,      KDE_Mover-Sizer.ini, Special, DragScrollMinUpdateInterval_us
-    IniRead,   DragScrollIntervalDirectionChange_us, KDE_Mover-Sizer.ini, Special, DragScrollIntervalDirectionChange_us, 100000  ; allow change of horizontal/vertical movement only after this mouse-idle time (unit microseconds)
+    IniRead,   DragScrollMinUpdatePeriod_us,         KDE_Mover-Sizer.ini, Special, DragScrollMinUpdatePeriod_us, 15000      ; at maximum 1 wheel scroll event is send during this period (unit microseconds)
+    IniWrite, %DragScrollMinUpdatePeriod_us%,        KDE_Mover-Sizer.ini, Special, DragScrollMinUpdatePeriod_us
+    IniRead,   DragScrollIntervalDirectionChange_us, KDE_Mover-Sizer.ini, Special, DragScrollIntervalDirectionChange_us, 150000  ; allow change of horizontal/vertical movement only after this mouse-idle time (unit microseconds)
     IniWrite, %DragScrollIntervalDirectionChange_us%,KDE_Mover-Sizer.ini, Special, DragScrollIntervalDirectionChange_us
     IniRead,   DragScrollInvertScrollDirection,      KDE_Mover-Sizer.ini, Special, DragScrollInvertScrollDirection, 0       ; 0:scroll like dragging wheel, 1:scroll like dragging window content
     IniWrite, %DragScrollInvertScrollDirection%,     KDE_Mover-Sizer.ini, Special, DragScrollInvertScrollDirection
@@ -470,7 +473,7 @@ ReadIniFile:
     ; Check if INI file was written successfully
     If NOT FileExist("KDE_Mover-Sizer.ini")
     {
-        MsgBox, % MSGICON_EXCLAMATION, Config file not found, % "Could not create " A_WorkingDir
+        MsgBox, % MSGBOX_EXCLAMATION, Config file not found, % "Could not create " A_WorkingDir
         . "\KDE_Mover-Sizer.ini.`n`nTry to start KDE Mover-Size from a directory with write permissions.`n`n"
         . "Otherwise, most features and settings will remain in default state`n`n"
         . "and cannot be enabled or changed."
@@ -505,14 +508,15 @@ InitHotkeyHandler:
         Hotkey, %ResizingWindow_Hotkey%%ResizingWindow_Mouse%, DoResizingWindowMaximize, On
         Hotkey, %ToggleMaximize_Hotkey%%ToggleMaximize_Mouse%, DoToggleMaximize, On
         Hotkey, %ToggleMaximize_Hotkey%%ToggleMaximize_Mouse% Up, DoToggleMaximize_Up, On
+        if DoubleAltShortcuts
+            Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
+
         if EnableFocuslessScroll
         {
             Hotkey, WheelUp,   DoFocuslessScrollUp, On
             HotKey, WheelDown, DoFocuslessScrollDown, On
         }
     Hotkey, IfWinNotActive
-
-    Gosub, OnDoubleKey_Enable
 
     if (AddOnEnable_DrawGrid = 1 AND EnableDrawGrid = 1)
         Hotkey, %DrawGridOverlay_Hotkey%%DrawGridOverlay_Mouse%, DoDrawGridOverlay, On
@@ -601,6 +605,7 @@ PrepareMenu:
     Menu, MyOptionsMenu, add, Snap on Move, MenuSnapOnMoveHandler
     Menu, MyOptionsMenu, add, Snap on Resize, MenuSnapOnSizeHandler
     Menu, MyOptionsMenu, add, Borderless snapping, MenuBorderlessSnappingAndDPI
+    Menu, MyOptionsMenu, add, Scale Window per Monitor area and DPI, MenuScalePerMonitorAreaDPI
     Menu, MyOptionsMenu, add
     Menu, MyOptionsMenu, add, Magnetic Resizing, MenuSnapOnResizeMagnetic
     Menu, MyOptionsMenu, add, Resize restores Maximized Window, MenuDoRestoreOnResize
@@ -616,15 +621,15 @@ PrepareMenu:
     Menu, MyHotkeyMenu, add
     Menu, MyHotkeyMenu, add, Swap Left<->Right Mouse buttons, MenuHotkey_MouseSwap
     Menu, MyHotkeyMenu, add
-    Menu, MyHotkeyMenu, add, Use Alt as key, MenuHotkey_Alt
-    Menu, MyHotkeyMenu, add, Use Control+Shift as key, MenuHotkey_ControlShift
-    Menu, MyHotkeyMenu, add, Use Control+Alt as key, MenuHotkey_ControlAlt
-    Menu, MyHotkeyMenu, add, Use Left Windows as key, MenuHotkey_LWin
-    Menu, MyHotkeyMenu, add, Use AltGr as key, MenuHotkey_AltGr
-    Menu, MyHotkeyMenu, add, Use Middle Mouse Button as key, MenuHotkey_MButton
+    Menu, MyHotkeyMenu, add, Use Alt, MenuHotkey_Alt
+    Menu, MyHotkeyMenu, add, Use Control+Shift, MenuHotkey_ControlShift
+    Menu, MyHotkeyMenu, add, Use Control+Alt, MenuHotkey_ControlAlt
+    Menu, MyHotkeyMenu, add, Use Left Windows, MenuHotkey_LWin
+    Menu, MyHotkeyMenu, add, Use AltGr, MenuHotkey_AltGr
+    Menu, MyHotkeyMenu, add, Use Middle Mouse Button, MenuHotkey_MButton
     Menu, MyHotkeyMenu, add
-    Menu, MyHotkeyMenu, add, Use Extra Mouse Buttons 4+5 without key, MenuHotkey_XButtons
     Menu, MyHotkeyMenu, add, Use Ctrl/Win with Space key, MenuHotkey_Space
+    Menu, MyHotkeyMenu, add, Use Extra Mouse Buttons 4+5 directly, MenuHotkey_XButtons
 
     ; Create main tray menu
     ;
@@ -683,6 +688,8 @@ PrepareMenu:
         Menu, MyOptionsMenu, Check, Snap on Resize
     if BorderlessSnappingAndDPI
         Menu, MyOptionsMenu, Check, Borderless snapping
+    if ScalePerMonitorAreaDPI
+        Menu, MyOptionsMenu, Check, Scale Window per Monitor area and DPI
     if BringWindowToFront
         Menu, MyOptionsMenu, Check, Bring Windows to Front on dragging
     if ShowWindowWhenDragging
@@ -743,12 +750,24 @@ MenuSnapOnSizeHandler:
 MenuBorderlessSnappingAndDPI:
     if (BorderlessSnappingAndDPI = 0 && (SubStr(A_OSVersion,1,3) = "WIN" || A_OSVersion < "10.0.14393"))
     {
-        MsgBox, 0x30, Windows version too old!, % "DPI-aware Borderless snapping is not supported for Windows 10 Builds earlier than 14393 (v1607)"
+        MsgBox, % MSGBOX_EXCLAMATION, Windows version too old!, % "DPI-aware Borderless snapping is not supported for Windows 10 Builds earlier than 14393 (v1607)"
         return
     }
     Menu, MyOptionsMenu, ToggleCheck, Borderless snapping
     BorderlessSnappingAndDPI := NOT BorderlessSnappingAndDPI
     IniWrite, %BorderlessSnappingAndDPI%, KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI
+    Reload
+    return
+
+MenuScalePerMonitorAreaDPI:
+    if (BorderlessSnappingAndDPI = 0)
+    {
+        MsgBox, % MSGBOX_EXCLAMATION, Active Borderless snapping required!, % "DPI-dependant scaling requires DPI-aware routines that are only availble with Borderless snapping enabled."
+        return
+    }
+    Menu, MyOptionsMenu, ToggleCheck, Scale Window per Monitor area and DPI
+    ScalePerMonitorAreaDPI := NOT ScalePerMonitorAreaDPI
+    IniWrite, %ScalePerMonitorAreaDPI%, KDE_Mover-Sizer.ini, Settings, ScalePerMonitorAreaDPI
     Reload
     return
 
@@ -830,9 +849,9 @@ MenuAddWindowToDragScrollFullScrollStepWindowList:
     if (CheckIsWindowInList(%listName%, WindowMatchStr))
     {
         if (listName = "DragScrollFullScrollStepWindowList")
-            MsgBox,48, Add window to list, % "Application is already on list.`r`nRestart it to reset any wheel scroll offsets."
+            MsgBox, % MSGBOX_EXCLAMATION, Add window to list, % "Application is already on list.`r`nRestart it to reset any wheel scroll offsets."
         else
-            MsgBox,48, Add window to list, Application is already on list
+            MsgBox, % MSGBOX_EXCLAMATION, Add window to list, Application is already on list
         return
     }
     WindowList := %listName% . WindowMatchStr
@@ -868,12 +887,12 @@ MenuRemoveWindowFromDragScrollFullScrollStepWindowList:
         Traytip, Remove window from list, Application removed from list:`r`n%WindowMatchStr%, 20,%TRAYICON_NOSOUND%
         Sleep,100
     } else
-        MsgBox,48, Remove window from list, % "Could not remove from list:`r`n" . WindowMatchStr . "`r`n`r`nApplications now on list:`r`n" . %listName%
+        MsgBox, % MSGBOX_EXCLAMATION, Remove window from list, % "Could not remove from list:`r`n" . WindowMatchStr . "`r`n`r`nApplications now on list:`r`n" . %listName%
     Reload
     return
 
 MenuShowIgnoreList:
-    MsgBox 64, KDE Mover-Sizer Ignore Windows, Applications currently on Ignore Window list for dragging:`r`n%WindowIgnoreList%
+    MsgBox % MSGBOX_INFO, KDE Mover-Sizer Ignore Windows, Applications currently on Ignore Window list for dragging:`r`n%WindowIgnoreList%
     return
 
 MenuDragScrollInvertScrollDirection:
@@ -883,7 +902,7 @@ MenuDragScrollInvertScrollDirection:
     return
 
 MenuShowDragScrollWindowLists:
-    MsgBox 64, Drag Scrolling, % "Applications not controlled by Mouse Button Drag Scroll:`r`n" . DragScrollWindowIgnoreList . "`r`n`r`nApplications getting complete scroll steps (use this if first wheel event is skipped):`r`n" . DragScrollFullScrollStepWindowList
+    MsgBox % MSGBOX_INFO, Drag Scrolling, % "Applications not controlled by KMS Mouse-Button-Drag-Scroll:`r`n" . DragScrollWindowIgnoreList . "`r`n`r`nApplications getting only full scroll steps (use this if first wheel event is skipped):`r`n" . DragScrollFullScrollStepWindowList
     return
     
 ; *** MENU: Change Hotkey settings
@@ -905,6 +924,10 @@ MenuHotkey_Default:
     IniWrite, '',      KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Hotkey
     IniWrite, MButton, KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Mouse
     IniWrite, LButton, KDE_Mover-Sizer.ini, Hotkeys, DragScroll_HorizKey
+    ; These may have been disabled in some of the experimental Hotkey presets. So just reenable them here
+    IniWrite, 1,       KDE_Mover-Sizer.ini, Settings, DoubleAltShortcuts
+    IniWrite, 1,       KDE_Mover-Sizer.ini, Special, EnableDragScroll
+
     Reload
     return
 
@@ -973,7 +996,8 @@ MenuHotkey_MButton:
     IniWrite, 0,        KDE_Mover-Sizer.ini, Settings, DoubleAltShortcuts
     IniWrite, 0,        KDE_Mover-Sizer.ini, Special, EnableDragScroll
     IniWrite, MButton,  KDE_Mover-Sizer.ini, Hotkeys, QuickPosition_Hotkey2
-    Traytip, EXPERIMENTAL! Middle Mouse button hotkey, Hold the middle mouse button and drag window with left and right button. NOTE: Double-Hotkeys and MButton Scrolling are not supported in this configuration! Also not heavily tested,15,%TRAYICON_NOSOUND%
+    MsgBox, % MSGBOX_INFO, % "Middle Mouse button hotkey (EXPERIMENTAL)", % "Hold the middle mouse button and drag window with left and right mouse button.`r`n`r`n"
+      . "NOTE: Double-Hotkeys and Drag-Scrolling is not supported in this configuration and will be switched off! Also this configuration is not heavily tested, so consider it experimental."
     Reload
     return
 
@@ -984,8 +1008,8 @@ MenuHotkey_XButtons:
     IniWrite, XButton2, KDE_Mover-Sizer.ini, Hotkeys, ResizingWindow_Mouse
     IniWrite, XButton2, KDE_Mover-Sizer.ini, Hotkeys, DrawGridOverlay_Mouse
     IniWrite, XButton1, KDE_Mover-Sizer.ini, Hotkeys, FreezeSampler_Mouse
-    Traytip, Extra Mouse buttons hotkey, % "Hold extra mouse button (XButton1&2) for move/resize NOTE: Double-Hotkeys may not work as expected!.",15,%TRAYICON_NOSOUND%
-    MsgBox, % MSGICON_INFO, Extra Mouse buttons hotkey, % "Hold extra mouse button (XButton1&2) for move/resize.`r`nNo additional modifier key is set by default.`r`n`r`n"
+    MsgBox, % MSGBOX_INFO, % "Extra Mouse buttons hotkey (EXPERIMENTAL)", % "Hold Extra mouse buttons (XButton1/XButton2) for move/resize.`r`n"
+      . "No additional modifier hotkey is active.`r`n`r`n"
       . "NOTE: Double-Hotkey works differently here if there is no modifier defined :`r`n"
       . "In this configuration, the Double-Hotkey must be released before clicking mouse button for Double-Hotkey action"
     Reload
@@ -1000,7 +1024,9 @@ MenuHotkey_Space:
     IniWrite, 0,        KDE_Mover-Sizer.ini, Settings, DoubleAltShortcuts
     IniWrite, 0,        KDE_Mover-Sizer.ini, Special, EnableDragScroll
     IniWrite, LWin,     KDE_Mover-Sizer.ini, Hotkeys, QuickPosition_Hotkey2
-    Traytip, Space hotkey, Hold Win(move) or Ctrl+Win(resize) and drag by pressing Space key. NOTE: Double-Hotkeys are not supported in this configuration!,15,%TRAYICON_NOSOUND%
+    MsgBox, % MSGBOX_INFO, % "Space hotkey (EXPERIMENTAL)", % "Hold Win(for moving) or Ctrl+Win(for resizing)`r`n"
+      . "and press Space key instead of mouse button to start dragging.`r`n`r`n"
+      . "NOTE: Double-Hotkeys and Drag-Scrolling is not supported in this configuration and will be switched off! Also this configuration is not heavily tested, so consider it experimental."
     Reload
     return
 
@@ -1091,7 +1117,7 @@ MenuEditMyIni:
     If FileExist("KDE_Mover-Sizer.ini")
         RunWait, KDE_Mover-Sizer.ini
     Else
-        MsgBox, % MSGICON_EXCLAMATION, Config file not found, % "Could not find`n" A_WorkingDir "\KDE_Mover-Sizer.ini.`n`nTry to start KDE Mover-Size from a directory with write permissions."
+        MsgBox, % MSGBOX_EXCLAMATION, Config file not found, % "Could not find`n" A_WorkingDir "\KDE_Mover-Sizer.ini.`n`nTry to start KDE Mover-Size from a directory with write permissions."
     Reload
     return
 
@@ -1117,7 +1143,7 @@ MenuRunAsAdmin:
     }
     Else
     {
-        MsgBox, % MSGICON_INFO, KDE Mover-Sizer, % "Manual restart is required to return to normal user permissions.."
+        MsgBox, % MSGBOX_INFO, KDE Mover-Sizer, % "Manual restart is required to return to normal user permissions.."
         If FileExist(startupLinkFile)
         {
             SplitPath, startupLinkFile,, startupLinkFile_Dir
@@ -1132,13 +1158,13 @@ MenuRunAsAdmin:
 MenuStartupShortcut:
     If FileExist(startupLinkFile)
     {
-        MsgBox, % MSGICON_QUESTION_OKCANCEL,Remove from Autostart?, % "Link exists in startup folder:`r`n" . startupLinkFile . "`r`n`r`n"
+        MsgBox, % MSGBOX_QUESTION_OKCANCEL,Remove from Autostart?, % "Link exists in startup folder:`r`n" . startupLinkFile . "`r`n`r`n"
                      . "Do you want to remove KDE Mover-Sizer from Autostart?"
         IfMsgBox OK
             FileDelete, %startupLinkFile%
     }
     Else {
-        MsgBox, % MSGICON_QUESTION_OKCANCEL,Enable Autostart?, % "Do you want to run KDE Mover-Sizer automatically on startup?`r`n`r`n"
+        MsgBox, % MSGBOX_QUESTION_OKCANCEL,Enable Autostart?, % "Do you want to run KDE Mover-Sizer automatically on startup?`r`n`r`n"
            . "Click OK to create a lnk file:`r`n" . startupLinkFile . "`r`n"
         IfMsgBox OK
         {
@@ -1165,11 +1191,11 @@ MenuStartupShortcut:
     return
     
 MenuHideIcon:
-    MsgBox, 0x34,Be Careful!, % "If you disable the tray icon will have no way to shutdown`r`n"
+    MsgBox, % MSGBOX_EXCLAMATION_YESNO,Be Careful!, % "If you disable the tray icon will have no way to shutdown`r`n"
                               . "KDE-Mover-Sizer!`r`n`r`n"
                               . "To revert to the normal behaviour, you will need to delete or set:`r`n`r`n"
                               . "    HideTrayIcon=0`r`n`r`n"
-                              . "..in your KDE_Mover-Sizer.ini.`r`n`r`n"
+                              . "..in " A_WorkingDir "\KDE_Mover-Sizer.ini.`r`n`r`n"
                               . "Are you sure you wish to continue disabling the icon?"
     IfMsgBox No
         return
@@ -1187,7 +1213,7 @@ MenuAbout:
         . "    Double-" . strname(ToggleMaximize_Hotkey) . " + " . strname(ToggleMaximize_Mouse) . " Button -> Close a window.`r`n"
         . "`r`n"
 
-    MsgBox,4,About KDE Mover-Sizer.., % "KDE Mover-Sizer..                                                Version 2.11 (March, 2025)`r`n"
+    MsgBox,4,About KDE Mover-Sizer.., % "KDE Mover-Sizer..                                                Version 2.12 (March, 2026)`r`n"
         . "`r`n"
         . "KDE Mover-Sizer (created with AHKv1, autohotkey.com)`r`n"
         . "makes it easy to move and resize windows without having`r`n"
@@ -1266,7 +1292,7 @@ DoMovingWindowMinimize:
             PostMessage, 0x112,0xf020,,,ahk_id %KDE_id%
             ; This message is mostly equivalent to WinMinimize, but it avoids a bug with PSPad.
         DoubleAlt := 0
-        ;Send {Blind}{%DoubleKey_hotkey2%}   ; TODO: Check for different hotkeys if this is really no longer necessary
+        ;Send {Blind}{%DoubleKey_Hotkey2%}   ; not required for the range of the currently supported AHK versions
         return
     }
 
@@ -1275,7 +1301,7 @@ DoMovingWindowMinimize:
 
     ; stop the double-key and QuickPosition hotkey from interfering
     Gosub, OnDoubleKey_Disable
-    if DoubleAltShortcuts = 0
+    if (DoubleAltShortcuts = 0 OR QuickPosition_Hotkey2 != DoubleKey_Hotkey2)
         Hotkey, ~%QuickPosition_Hotkey2%, DoNothing, On
 
     ; WinRestore 1st part
@@ -1318,6 +1344,13 @@ DoMovingWindowMinimize:
 
     ; Get the initial window position.
     WinGetPos, KDE_WinX1, KDE_WinY1, KDE_WinW, KDE_WinH, ahk_id %KDE_id%
+    
+    If BorderlessSnappingAndDPI
+    {
+        GetCurrentScreenBorders(ceil(KDE_WinX1+KDE_WinW/2),ceil(KDE_WinY1+KDE_WinH/2), l, r, t, b)
+        monWidthOrig  := monWidthCurrent  := r-l
+        monHeightOrig := monHeightCurrent := b-t
+    }
 
     ; WinRestore 2nd part after DPI switch (move window center to cursor)
     If KDE_WinMaximized
@@ -1365,27 +1398,45 @@ DoMovingWindowMinimize:
 
         MouseGetPos,MouseX,MouseY ; Get the current mouse position.
 
-        ; When moving a window to a monitor with a different DPI, scale the window size accordingly,
+        ; When moving a (PER_MONITOR_AWARE)) window to a monitor with a different DPI, scale the window size accordingly,
         ; so that the window content stays the same (e.g. line breaks in editor)
         ; -> assumes default scaling (e.g. notepad). Special scaling (e.g. conhost.exe) is ignored.
         ; This is again a window thing: SYSTEM_AWARE apps scale automatically, MONITOR_AWARE apps take size in actual screen pixels
-        If (BorderlessSnappingAndDPI AND wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE)
+        If BorderlessSnappingAndDPI
         {
-            if ShowWindowWhenDragging
-                wndDpiNew := GetWindowDpi(KDE_id)
-            Else
-                wndDpiNew := GetMonitorDpiFromRect(KDE_WinX2,KDE_WinY2, KDE_WinW,KDE_WinH)
-                
-            ; Tooltip, % "wndDpiCurrent: " wndDpiCurrent ", wndDpiNew: " wndDpiNew
-            if (wndDpiNew != wndDpiCurrent)
+            if (ScalePerMonitorAreaDPI = 0 AND wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE)
             {
-                wndScale := wndDpiNew / wndDpiCurrent
-                wndDpiCurrent := wndDpiNew
-                KDE_WinW := ceil(KDE_WinW * wndScale)
-                KDE_WinH := ceil(KDE_WinH * wndScale)
+                if ShowWindowWhenDragging
+                    wndDpiNew := GetWindowDpi(KDE_id)
+                Else
+                    wndDpiNew := GetMonitorDpiFromRect(KDE_WinX2,KDE_WinY2, KDE_WinW,KDE_WinH)
+                    
+                if (wndDpiNew != wndDpiCurrent)
+                {
+                    ;Tooltip, % "1: wndDpiCurrent: " wndDpiCurrent ", wndDpiNew: " wndDpiNew
+                    wndScale := wndDpiNew / wndDpiCurrent
+                    wndDpiCurrent := wndDpiNew
+                    KDE_WinW := ceil(KDE_WinW * wndScale)
+                    KDE_WinH := ceil(KDE_WinH * wndScale)
+                }
+            }
+            if (ScalePerMonitorAreaDPI = 1)
+            {
+                GetCurrentScreenBorders(ceil(KDE_WinX2+KDE_WinW/2),ceil(KDE_WinY2+KDE_WinH/2), l, r, t, b)
+                monWidthNew  := r-l, monHeightNew := b-t
+                
+                if (monWidthNew != monWidthCurrent)
+                {
+                    KDE_WinW := ceil(KDE_WinW * monWidthNew / monWidthCurrent )
+                    monWidthCurrent := monWidthNew
+                }
+                if (monHeightNew != monHeightCurrent)
+                {
+                    KDE_WinH := ceil(KDE_WinH * monHeightNew / monHeightCurrent)
+                    monHeightCurrent := monHeightNew
+                }
             }
         }
-
 
 
         if (QuickPosition_Button_wasUp AND GetKeyState( QuickPosition_Hotkey2 , "P" ))   ; no regular moving, but quickly snap and resize window to screen edge/corner
@@ -1491,7 +1542,7 @@ DoMovingWindowMinimize:
 
     ; reenable DoubleKey_Hotkey
     Gosub, OnDoubleKey_Enable
-    if DoubleAltShortcuts = 0
+    if (DoubleAltShortcuts = 0 OR QuickPosition_Hotkey2 != DoubleKey_Hotkey2)
         Hotkey, ~%QuickPosition_Hotkey2%, Off
 
     return
@@ -1532,8 +1583,7 @@ DoResizingWindowMaximize:
                 WinMaximize, ahk_id %KDE_id%
         }
         DoubleAlt := 0
-        ;Send {Blind}{%DoubleKey_hotkey2%}
-
+        ;Send {Blind}{%DoubleKey_Hotkey2%}   ; not required for the range of the currently supported AHK versions
         return
     }
 
@@ -1542,7 +1592,7 @@ DoResizingWindowMaximize:
 
     ; stop the double-key from interfering
     Gosub, OnDoubleKey_Disable
-    if DoubleAltShortcuts = 0
+    if (DoubleAltShortcuts = 0 OR QuickPosition_Hotkey2 != DoubleKey_Hotkey2)
         Hotkey, ~%QuickPosition_Hotkey2%, DoNothing, On
 
 
@@ -1923,7 +1973,7 @@ DoResizingWindowMaximize:
 
     ; reenable DoubleKey_Hotkey
     Gosub, OnDoubleKey_Enable
-    if DoubleAltShortcuts = 0
+    if (DoubleAltShortcuts = 0 OR QuickPosition_Hotkey2 != DoubleKey_Hotkey2)
         Hotkey, ~%QuickPosition_Hotkey2%, Off
     
     return
@@ -1982,29 +2032,29 @@ DoToggleMaximize_Up:
 
 
 ; ********************************************************************************
-; ******* This detects "double-clicks" of the alt/DoubleKey_hotkey2 key.   *******
+; ******* This detects "double-clicks" of the alt/DoubleKey_Hotkey2 key.   *******
 ; ********************************************************************************
 
 OnDoubleKey:
     if DoubleAltShortcuts
-        DoubleAlt := A_PriorHotKey = "~"DoubleKey_hotkey2 AND A_TimeSincePriorHotkey < DoubleModifierKey_MaxDelay_ms
+        DoubleAlt := A_PriorHotKey = "~"DoubleKey_Hotkey2 AND A_TimeSincePriorHotkey < DoubleModifierKey_MaxDelay_ms
    
-    Sleep, 1  ; give (start) menu time to open, so we can close it
-    if (DoubleAlt AND (DoubleKey_hotkey2 = "LWin" OR DoubleKey_hotkey2 = "RWin"))
+    if (DoubleAlt AND (DoubleKey_Hotkey2 = "LWin" OR DoubleKey_Hotkey2 = "RWin"))
+    {
+        Sleep, 1  ; give (start) menu time to for "Win Down" to arrive, so we send "Esc" before "Win Up", so it never appears
         SendEvent {Esc}  ; we are on the 2nd call of double-win hotkey -> close start menu
+    }
     
     if DoubleKey_isAltGr
         KeyWait RAlt
     else
-        KeyWait %DoubleKey_hotkey2%  ; This prevents the keyboard's auto-repeat feature from interfering.
+        KeyWait %DoubleKey_Hotkey2%  ; This prevents the keyboard's auto-repeat feature from interfering.
+    
     return
 
 OnDoubleKey_Enable:
-    if DoubleAltShortcuts {
-        Hotkey,IfWinNotActive, ahk_group IgnoreActiveWindowsList
-            Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
-        Hotkey, IfWinNotActive
-    }
+    if DoubleAltShortcuts
+        Hotkey, ~%DoubleKey_Hotkey2%, OnDoubleKey, On
     return
 
 OnDoubleKey_Disable:
@@ -2385,15 +2435,15 @@ DoFocuslessScrollDown:
 ; https://learn.microsoft.com/windows/win32/inputdev/wm-mousehwheel
 FocuslessScroll(WMid, MouseX, MouseY, CtrlHnd, Scrollstep)
 {
-    ; limit to multiple of WHEEL_DELTA(120)
-    if Scrollstep > 32760
+    ; to be safe for all apps, the maximum step size limit should be multiple of WHEEL_DELTA(120):
+    If Scrollstep > 32760
         Scrollstep := 32760
-    if Scrollstep < -32760
+    If Scrollstep < -32760
         Scrollstep := -32760
     wParam := Scrollstep << 16
-    If(GetKeyState("Shift","P"))
+    If GetKeyState("Shift","P")
         wParam |= 0x4
-    If(GetKeyState("Ctrl","P"))
+    If GetKeyState("Ctrl","P")
         wParam |= 0x8
     PostMessage, WMid, wParam, ((MouseY << 16) | (MouseX &0xFFFF)),, ahk_id %CtrlHnd%
 }
@@ -2438,19 +2488,20 @@ DoDragScroll:
     DragScrollXDelta         := 0   ; X distance of mouse movement since last call to DragScrollHandler (only used inside hook, but reset on each round)
     DragScrollYDelta         := 0   ; Y distance of mouse movement since last call to DragScrollHandler (only used inside hook, but reset on each round)
     DragScrollYDeltaIncr     := DragScrollWindowWantsFullStepIncrement ? DragScrollSpeedDivider : 1   ; Minimum pixel distance before DragScrollHandler is called after drag scrolling has started
-    DragScrollXDeltaIncr     := DragScrollWindowWantsFullStepIncrement ? DragScrollSpeedDivider : 4   ; minimum >1: increase the chance of starting a Y-Scroll 
+    DragScrollXDeltaIncr     := DragScrollWindowWantsFullStepIncrement ? DragScrollSpeedDivider : 1   ; minimum >1: increase the chance of starting a Y-Scroll
     DragScrollMouseHasMoved  := 0   ; True once a wheel message was sent
     DragScrollIsRunning      := 0   ; True while single-shot timer function "DragScroll" is active. Prevents calling concurrently
     DragScrollState          := 0   ; 0:initial state to determine direction, 1:scroll vertical (y-axis), 2:scroll horizontal (x-axis)
     DragScrollQPCus(1) ; reset timer
     ;MButtonHistory := ""
+    DragScrollStartDistance :=max(DragScrollYDeltaIncr, DragScrollMinStartDistance)
 
     MouseGetPos, DragScrollX, DragScrollY    ; If hook is fast, reference mouse cursor position needs to be initialized before enabling hook
     
     Hook := DllCall("SetWindowsHookEx", "Int",14, "Ptr",DragScrollMouseHookAddr
                    ,"Ptr",DllCall("GetModuleHandle", "Ptr",0, "Ptr"), "UInt",0, "Ptr") ; Hook on WH_MOUSE_LL (tnx to Rohwedder for the Hook idea&stuff)
 
-    Sleep,3 ; mouse cursor was sometimes off by 1 pixel, so wait until any potential pending MOVE messages are handled
+    Sleep,3  ; mouse cursor was sometimes off by 1 pixel, so wait until any potential pending MOVE messages are handled
     MouseGetPos, DragScrollX, DragScrollY
 
     KeyWait %DragScroll_Mouse%, U
@@ -2461,10 +2512,16 @@ DoDragScroll:
     ;MButtonHistory := MButtonHistory . " Done:HasMoved=" DragScrollMouseHasMoved
     ; If WM_MOVEd (and turned it into WHEEL), do nothing. If mouse was not moved, send simple click (Down+Up) for application's default behaviour
     if ( DragScrollMouseHasMoved = 0 )
-        SendEvent {Blind}{%DragScroll_Mouse%}
+    {
+        ;SendEvent {Blind}{%DragScroll_Mouse%}
+        SendEvent {Blind}{%DragScroll_Mouse% Down}
+        KeyWait %DragScroll_Mouse%, U
+        SendEvent {Blind}{%DragScroll_Mouse% Up}
+        sleep, 1 ; occasionally, Drag Mouse button got stuck during heavy clicking. Split into Down+Up and add sleep, just to be on the safe..
+    }
 
     Gosub, OnDoubleKey_Enable
-    ;Tooltip, % MButtonHistory
+    
     Hotkey, *%DragScroll_HorizKey%, Off
     
     return
@@ -2475,14 +2532,14 @@ DoDragScrollUp:
     return
 
 ; This is the hook/callback, registered at DragScrollMouseHookAddr
-; Calls DragScrollHandler if mouse moved for at least DragScrollYDelta and at max every DragScrollMinUpdateInterval_us
+; Calls DragScrollHandler if mouse moved for at least DragScrollYDelta and at max every DragScrollMinUpdatePeriod_us
 ;   https://learn.microsoft.com/windows/win32/winmsg/lowlevelmouseproc
 ;   https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-msllhookstruct
 ;   https://learn.microsoft.com/windows/win32/inputdev/wm-mousemove
 DragScrollMouseHook(nCode, wParam, lParam) {
     Global DragScrollMouseMove, DragScrollX,DragScrollY, DragScrollIsRunning, DragScrollXDelta,DragScrollYDelta, DragScrollXDeltaIncr,DragScrollYDeltaIncr
-         , DragScrollMinUpdateInterval_us, DragScrollIntervalDirectionChange_us, DragScrollMouseHasMoved, MBwmID, DragScrollState  ; , MButtonHistory
-
+         , DragScrollStartDistance, DragScrollMinUpdatePeriod_us, DragScrollIntervalDirectionChange_us, DragScrollMouseHasMoved, MBwmID, DragScrollState  ; , MButtonHistory
+    
     If (nCode >= 0 AND wParam = 0x0200)
     { ; WM_MOUSEMOVE = 0x0200
         xdelta := -NumGet(lParam+0,0, "Int") + DragScrollX ; reverse direction for x-scroll
@@ -2490,51 +2547,58 @@ DragScrollMouseHook(nCode, wParam, lParam) {
         DragScrollXDelta += xdelta    ; MouseX movement in per-monitor-aware screen coordinates
         DragScrollYDelta += ydelta    ; MouseY movement in per-monitor-aware screen coordinates
 
-        ;Tooltip, % "X/Y:" DragScrollX "/" DragScrollY " delta:" xdelta "/" ydelta " DsXyDelta:" DragScrollXDelta "/" DragScrollYDelta " State:" DragScrollState
-        ;           . " DSMouseMove:" DragScrollMouseMove "  MBwmID:" MBwmID ; "`n" MButtonHistory
+        If DragScrollQPCus() <= DragScrollMinUpdatePeriod_us
+            Return, 1
 
-        If (DragScrollState != 0 AND DragScrollQPCus() > DragScrollIntervalDirectionChange_us)       ; allow change of direction when mouse was resting in place
-            DragScrollState = 0
+        If (DragScrollState != 0 AND DragScrollQPCus() > DragScrollIntervalDirectionChange_us) {      ; allow change of direction when mouse was resting in place
+            DragScrollState := 0
+            , DragScrollXDelta := 0
+            , DragScrollYDelta := 0
+        }
+        
+        absDragScrollXDelta := abs(DragScrollXDelta)
+        , absDragScrollYDelta := abs(DragScrollYDelta)
 
         If (DragScrollState = 0 AND (ydelta != 0 OR xdelta != 0)) {
-            If ((abs(DragScrollXDelta) >= DragScrollXDeltaIncr OR abs(DragScrollYDelta) >= DragScrollYDeltaIncr) AND DragScrollQPCus() > DragScrollMinUpdateInterval_us)
+            If (absDragScrollXDelta >= DragScrollStartDistance OR absDragScrollYDelta >= DragScrollStartDistance)
             {
-                ;if DragScrollMouseHasMoved = 0  ; switch from initial to normal minimum distance
-                ;    DragScrollYDeltaIncr := DragScrollYDeltaIncr2
-                if (4* abs(DragScrollYDelta) >= abs(DragScrollXDelta))  ; increase the chance of starting a Y-Scroll 
-                    DragScrollState = 1
-                else
-                    DragScrollState = 2
+                If (absDragScrollYDelta >= absDragScrollXDelta)
+                    DragScrollState := 1
+                Else
+                    DragScrollState := 2
             }
         }
-        if (DragScrollIsRunning = 0 AND DragScrollState = 1 AND ydelta != 0 AND abs(DragScrollYDelta) >= DragScrollYDeltaIncr AND DragScrollQPCus() > DragScrollMinUpdateInterval_us) {
+        
+        If (DragScrollIsRunning = 0 AND DragScrollState = 1 AND ydelta != 0 AND absDragScrollYDelta >= DragScrollYDeltaIncr) {
             DragScrollIsRunning := 1
-            DragScrollMouseMove := DragScrollYDelta //DragScrollYDeltaIncr *DragScrollYDeltaIncr  ; "floor" to multiples of delta increment
+            DragScrollMouseMove := DragScrollYDelta //DragScrollYDeltaIncr *DragScrollYDeltaIncr  ; "floor" to multiples of delta increment using integer division
             , DragScrollYDelta  -= DragScrollMouseMove
             , DragScrollXDelta  := 0
             , DragScrollQPCus(1)
             , MBwmID := WM_MOUSEWHEEL
             SetTimer, DragScrollHandler, -1
         }
-        if (DragScrollIsRunning = 0 AND DragScrollState = 2 AND xdelta != 0 AND abs(DragScrollXDelta) >= DragScrollXDeltaIncr AND DragScrollQPCus() > DragScrollMinUpdateInterval_us) {
+        If (DragScrollIsRunning = 0 AND DragScrollState = 2 AND xdelta != 0 AND absDragScrollXDelta >= DragScrollXDeltaIncr) {
             DragScrollIsRunning := 1
-            DragScrollMouseMove := DragScrollXDelta //DragScrollXDeltaIncr *DragScrollXDeltaIncr  ; "floor" to multiples of delta increment
+            DragScrollMouseMove := DragScrollXDelta //DragScrollXDeltaIncr *DragScrollXDeltaIncr  ; "floor" to multiples of delta increment using integer division
             , DragScrollXDelta  -= DragScrollMouseMove
             , DragScrollYDelta  := 0
             , DragScrollQPCus(1)
             , MBwmID := WM_MOUSEHWHEEL
             SetTimer, DragScrollHandler, -1
         }
+        ;Tooltip, % "2-X/Y: " DragScrollX " / " DragScrollY "   delta: " xdelta " / " ydelta "   Ds-X/Y-Delta: " DragScrollXDelta " / " DragScrollYDelta "   State: " DragScrollState
+        ;   . " DSMouseMove:" DragScrollMouseMove "  MBwmID:" MBwmID ; "`n" MButtonHistory
+
         Return, 1
     }
     Return, DllCall("CallNextHookEx", "UInt",0, "Int",nCode, "UInt",wParam, "UInt",lParam)
 }
 
 ; Scroll-Handler called by Hook as separate thread
-; Using MouseClick resulted in occasional MButtons getting stuck. Thought this would only happen for SendMode Input,
-; but this also happened a few times on SendMode Event -> stay with PostMessage
-; FastAccel: a(x-50+1/(2a))^2+50-1/(4a)  (for b=MinMouseSpeed = 50)  -> not good. jumps if called in irregular intervals
-; a(x-b)+b
+; Using MouseClick to send Wheel resulted in occasional MButtons getting stuck. I first thought this would only happen for SendMode Input,
+; but then this also happened a few times on SendMode Event -> better stay with PostMessage
+; FastAccel: a(x-50+1/(2a))^2+50-1/(4a)  (for b=MinMouseSpeed = 50)  -> not good. jumps if called in irregular intervals ==> a(x-b)+b
 DragScrollHandler:
     ;MBwmID := WM_MOUSEWHEEL
     ;If GetKeyState(DragScroll_HorizKey, "P")
@@ -2556,14 +2620,14 @@ DragScrollHandler:
         scrollOffset := DragScrollWindowWantsFullStepIncrement ? WHEEL_DELTA * round(dsDelta //DragScrollSpeedDivider) 
                                                         :  round(WHEEL_DELTA *       dsDelta //DragScrollSpeedDivider)
     }
-    ;Tooltip, % "X/Y:" DragScrollX "/" DragScrollY " MBwmID:" MBwmID " DragScrollMouseMove:" DragScrollMouseMove " scrollOffset:" scrollOffset ; "`n" MButtonHistory
+    ;Tooltip, % "3-X/Y:" DragScrollX "/" DragScrollY " MBwmID:" MBwmID " DragScrollMouseMove:" DragScrollMouseMove " scrollOffset:" scrollOffset ; "`n" MButtonHistory
     FocuslessScroll( MBwmID, DragScrollX, DragScrollY, MBCtrlHnd, scrollOffset )
 
     DragScrollMouseHasMoved := 1
     DragScrollIsRunning := 0
     Return
 
-; qpc(1): start counter. qpc() -> returns delta to last qpc(1)-call in microseconds
+; qpc(1): start counter. qpc() -> returns delta to last qpc(1)-call in microseconds  (by SKAN)
 DragScrollQPCus(R := 0) {
     static P := 0, F2 := 0, Q := DllCall("QueryPerformanceFrequency", "Int64P",F2), F := F2 // 1000000
     return !DllCall("QueryPerformanceCounter", "Int64P",Q) + (R ? (P := Q) // F : (Q - P) // F) 
@@ -2705,7 +2769,7 @@ QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2,
 ; get current screen boarders for monitor where mouse cursor is
 GetCurrentScreenBorders(Mouse_X, Mouse_Y, ByRef CurrentScreenLeft, ByRef CurrentScreenRight, ByRef CurrentScreenTop, ByRef CurrentScreenBottom)
 {
-    ; AHK or (more probably) Windows has a bug that there might be a pixel offset of Mouse vs Monitor when using multimonitor setup with different DPI settings
+    ; AHK or Windows has a bug that there might be a pixel offset of Mouse vs Monitor when using multimonitor setup with different DPI settings
     ; Also, when moving a SYSTEM_AWARE window across monitor, mouse pointer may still return once in old DPI coordinates (which also results in an impossible position)
     ; -> return previous screen borders instead to avoid misplaced windows
     static LastScreenLeft   := 0, LastScreenRight  := 0, LastScreenTop    := 0,  LastScreenBottom := 0
@@ -2718,21 +2782,17 @@ GetCurrentScreenBorders(Mouse_X, Mouse_Y, ByRef CurrentScreenLeft, ByRef Current
         SysGet, MonitorWorkArea, MonitorWorkArea, %A_Index%
 
         if (Mouse_X >= MonitorWorkAreaLeft) AND (Mouse_X <= MonitorWorkAreaRight) AND (Mouse_Y >= MonitorWorkAreaTop) AND (Mouse_Y <= MonitorWorkAreaBottom)
-        {
             CurrentScreenLeft   := LastScreenLeft   := MonitorWorkAreaLeft
-            CurrentScreenRight  := LastScreenRight  := MonitorWorkAreaRight
-            CurrentScreenTop    := LastScreenTop    := MonitorWorkAreaTop
-            CurrentScreenBottom := LastScreenBottom := MonitorWorkAreaBottom
-            found := 1
-        }
+            , CurrentScreenRight  := LastScreenRight  := MonitorWorkAreaRight
+            , CurrentScreenTop    := LastScreenTop    := MonitorWorkAreaTop
+            , CurrentScreenBottom := LastScreenBottom := MonitorWorkAreaBottom
+            , found := 1
     }
     if found = 0
-    {
         CurrentScreenLeft   := LastScreenLeft
-        CurrentScreenRight  := LastScreenRight
-        CurrentScreenTop    := LastScreenTop
-        CurrentScreenBottom := LastScreenBottom
-    }
+        , CurrentScreenRight  := LastScreenRight
+        , CurrentScreenTop    := LastScreenTop
+        , CurrentScreenBottom := LastScreenBottom
 }
 
 ; **********************************************************
@@ -2786,7 +2846,7 @@ GetWindowDpiAwareness(hWindow)
 }
 ; Gets the (current) DPI for the specified window
 ; Only useful for DPI_AWARENESS_PER_MONITOR_AWARE windows.
-; All others just return 96 (they don't return A_ScreeDPI!)
+; All others just return 96 (they don't return A_ScreenDPI!)
 ; (For us, that's OK, as adaptive scaling of the window size is only required for MONITOR_AWARE windows anyway
 ;  SYSTEM_AWARE windows scale automatically as part of WinMove)
 ; [return] DPI of window
@@ -2808,8 +2868,8 @@ RestoreWindowSpecificDpiAwarenessContext(wndDpiAwareness)
 }
 ; For ShowWindowWhenDragging = 0, we can't use GetWindowDpi as we didn't move the window yet.
 ; For some reason, user32.dll\MonitorFromRect does not find the correct monitor when the window spans two monitors with different DPIs
-; -> We use User32.dll\MonitorFromRect with the window center instead.
-; Note: MDT_EFFECTIVE_DPI only returns useful values if we are PER_MONITOR_AWARE. Otherwise, we always get 96dpi (or ScreeDPI?)
+; -> We use User32.dll\MonitorFromPoint with the window center instead.
+; Note: MDT_EFFECTIVE_DPI only returns useful values if we are PER_MONITOR_AWARE. Otherwise, we always get 96dpi (system screen DPI)
 ;       And MDT_RAW_DPI returns 94dpi/126dpi instead of 96/120, so can't use that either
 GetMonitorDpiFromRect(X, Y, W, H) {
     static MONITOR_DEFAULTTONEAREST := 2
@@ -2915,7 +2975,7 @@ CheckIsWindowInList(ByRef WindowList, ByRef WindowMatchStr)
     WinGet currentwinname, ProcessName, ahk_id %curwin_id%
     
     ; If running as admin, WinGet sometimes returns an empty ProcessName. Class name is ok though.
-    ; To keep lookup fast, we only lookup class name for the following process names
+    ; To keep lookup fast, we also only lookup class name for the following process names
     if (currentwinname = "" || currentwinname = "explorer.exe" || currentwinname = "ApplicationFrameHost.exe" || currentwinname = "ShellExperienceHost.exe")
     {
         WinGetClass currentwinclass, ahk_id %curwin_id%
@@ -3058,7 +3118,7 @@ SpecialCharactersLbl:
     }
     return
 
-; NOTE: For the currently required AHK versions, there is something broken using SendEvent {Blind}:
+; NOTE: For the currently range of required AHK versions, there is something broken using SendEvent {Blind}:
 ;
 ;       The following hotkey does not send F9Down, only 2x F9Up:
 ;       (check with https://w3c.github.io/uievents/tools/key-event-viewer.html)
@@ -3080,20 +3140,21 @@ SpecialCharactersLbl:
     ;SendEvent {Blind}{F9 down}
     ;KeyWait F9, U
     ;SendEvent {Blind}{F9 up}
-    ;actWin := WinExist("A")
-    ;curWin := actWin
-    ;ControlGetFocus, curCtrl
+    actWin := WinExist("A")
+    curWin := actWin
+    ControlGetFocus, curCtrl
     
-    ;WinGetTitle, t1
-    ;WinGetClass, t2
-    ;WinGet, t3, ProcessName
+    WinGetTitle, t1
+    WinGetClass, t2
+    WinGet, t3, ProcessName
     
-    ;MsgBox, % "Title:" t1 "`r`n ahk_class:" t2 ", ahk_exe:" t3 "`r`n ClassNN:" curCtrl
-    ;Clipboard := t2 " " t3 " " curCtrl
+    MsgBox, % "Title:" t1 "`r`n ahk_class:" t2 ", ahk_exe:" t3 "`r`n ClassNN:" curCtrl
+    Clipboard := t2 " " t3 " " curCtrl
 
-    ;KeyHistory
-    ;ListVars
-    ;ListLines
+    _A_WorkingDir := A_WorkingDir
+    KeyHistory
+    ListVars
+    ListLines
     return
 
 
