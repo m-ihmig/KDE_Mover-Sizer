@@ -9,5 +9,5 @@ If ( !(Test-Path ahk\Compiler\Ahk2Exe.exe -PathType Leaf)) {
 mkdir -Force build
 
 Write-Host "Compiling with Ahk2Exe..."
-.\ahk\Compiler\Ahk2Exe.exe /in '.\KDE Mover-Sizer.ahk' /out '.\build\KDE Mover-Sizer.exe' /icon '.\KDE Mover-Sizer.ico' /bin "ahk\Compiler\Unicode 32-bit.bin"
+.\ahk\Compiler\Ahk2Exe.exe /in '.\KDE Mover-Sizer.ahk' /out '.\build\KDE Mover-Sizer.exe' /icon '.\KDE Mover-Sizer.ico' /bin "ahk\Compiler\Unicode 32-bit.bin" /cp 65001
 
