@@ -24,15 +24,15 @@
 ;   Reason is that having the Mouse Cursor on a different screen than the Window Center causes inconsistent Win/AHK-internal DPI-scaling
 
 ;   Itstory:
-;   Mar  29, 2026:      Added: Option (.ini-only) to toggle Always-on-Top with Double-Alt + Hotkey (instead of WinClose).
-;                       Added: QuickPosition ratios and snapping-grid sizes are now configurable through .ini file
-;                       Added: For Drag-Scrolling, set a minimum distance to determine direction and start scrolling
+;   Apr   4, 2026:      Added: Special Feature Multi-Clipboard-Hotkey+Menu
+;   Mar  29, 2026:      Added: Option (.ini-only) to toggle Always-on-Top with Double-Alt + Hotkey (instead of WinClose). Set DoubleAltMButton_ToggleOnTop=1
+;                       Added: QuickPosition ratios and snapping-grid sizes are now configurable through .ini file. Set any number of QuickPosition_EdgeSize_* entries as preferred
+;                       Added: For Drag-Scrolling, set a minimum distance to determine scroll direction (horizontal or vertical) and start scrolling
 ;                       Added: Option to scale window relative to screen area when moving windows between monitors
 ;                              Enabled: scale the window to keep the same relative size between monitors, i.e. if a window fills 1/4 on the original screen,
 ;                                       it is scaled to alwo fill 1/4 of the destination screen (if the application allows it)
 ;                              Disabled: scale window according to DPI, so contents stays the same, i.e. window gets larger (more pixels) to e.g. fit the same number of lines
 ;                       Fixed: Incomplete Masking Escape and QuickPostition hotkeys
-;                       Clean: Removed menu option for Borderless Snapping. User should have no need change it -> .ini only
 ;   Feb  25, 2026:      Added: Correct scaling for moving PER_MONITOR_AWARE between monitors with different DPI.
 ;                              Hint if "Showing window contents while dragging" is disabled: press Control (WindowToFront) hotkey to force window update on current position
 ;                       Clean: Removed FocuslessScroll_Modifier. Never tested, never used
@@ -46,7 +46,8 @@
 ;                       Added: Option to Run as administrator with elevated permissions
 ;                       Added: Create and remove shortcut link in startup folder for autostart
 ;                       Added: Drag scrolling when holding middle mouse button. Don't move to generate middle click
-;                       Fixed: Make IgnoreWindows work for apps from Windows' apps framework that don't have a unique processname (e.g Calculator), includes class name (e.g. for Desktop)
+;                       Fixed: Make IgnoreWindows work for UWP apps from Windows' apps framework that don't have a unique processname (e.g Calculator)
+;                              -> manually add /<class name> to filter list after executable
 ;                       Fixed: Mask menu for Alt and LWin Hotkey when using QuickPosition
 ;                       Fixed: Allow click with active Alt+Tab task switcher for Win10 and Win11
 
@@ -191,7 +192,9 @@ MinVersion := "1.1.20.00"
 MaxVersion := "1.1.26.01"
 ; Min Version is required for DragScroll to work.
 ; Max Version: For later versions I could not get that nested DoubleAlt/Alt+MButton/Alt-Up to work correctly with masking Menu focus.
-;              Didn't find a single solution for later versions, that worked for e.g. Notepad++, Firefox, Console and Calc at the same time.
+;              Didn't find a single solution for later versions, that worked for e.g. Notepad++, Firefox, Console and Calc at the same time,
+;              and at the same time was stable enough not to get stuck on occassional "Alt/... not being released", as the versions up to 1.1.26.01 did.
+;              But for anyone wanting to try to get the legacy behaviour with newer AHK versions, good starting point:  https://www.autohotkey.com/docs/v1/lib/_MenuMaskKey.htm
 ;
 ;              Test these event sequences: (D=down, U=up, Mb=Mousebutton event)
 ;              - AltD + MbD + AltU + MbU
@@ -214,7 +217,7 @@ MaxVersion := "1.1.26.01"
 ;              1.1.26.01 was the last version that sent LControl down+up correctly before the last Alt+Up event
 ;              If someone finds an elegant single solution with later AHK versions for Notepad, Firefox, cmd/conhost and Calc (e.g. masking menu with LControl), please let me know! (mih)
 ;
-; For Unicode AHK Version, use UTF-8-BOM coding for .ahk file
+; For Unicode AHK Version, use "UTF-8-BOM coding" for .ahk file
 ;
 ; 32bit vs 64bit: At the moment, I don't see an advantage of the 64bit version. I've always used the 32bit version without issues on 64bit Windows up to Win11 without any issue.
 ;                 So for now, I suggest to just stay with a single 32bit version, for backwards compatibility and because it makes all that DllCall stuff a little simpler
@@ -239,6 +242,7 @@ If (A_AhkVersion < MinVersion OR A_AhkVersion > MaxVersion OR A_PtrSize != 4)
 DefaultEnableFocuslessScroll    := 0   ; This is usually no longer required for Win10+..except when running very old SW, such as Office 2010, which still requires this option. So we don't hide it, just disable it by default.
 DefaultBorderlessSnappingAndDPI := 0   ; Supports (and thus requires) DPI-awareness support -> only available on later Windows 10 versions
 DefaultWindowIgnoreList         := ""
+ClipboardMenu_NumberOfClipboards := 9
 
 If (SubStr(A_OSVersion,1,3) != "WIN")
 {
@@ -315,7 +319,7 @@ if (RunAsAdministrator = 1 AND A_IsAdmin = 0)
 
 ; list must be comma separated, so append ',' if it's missing
 For i,s in ["WindowIgnoreList", "DragScrollWindowIgnoreList", "DragScrollFullScrollStepWindowList"]
-If (SubStr(%s%, 0) != ",")
+If (StrLen(%s%) > 0 AND SubStr(%s%, 0) != ",")
 {
     newlist := %s% . ","
     IniWrite, %newlist%,   KDE_Mover-Sizer.ini, Settings, %s%
@@ -340,176 +344,125 @@ return
 ; ********* INIT: Read (and write default) INI file *************
 ; ***************************************************************
 ;
+IniReadWrite(varname, section, default, quote:=0) {
+    global
+    static iniFile := "KDE_Mover-Sizer.ini"
+    IniRead,   %varname%, %iniFile%, %section%, %varname%, %default%
+    val := %varname%
+    if quote
+        IniWrite, '%val%', %iniFile%, %section%, %varname%
+    else
+        IniWrite, %val%, %iniFile%, %section%, %varname%
+}
 ReadIniFile:
-    IniRead,   SnapOnSizeEnabled,        KDE_Mover-Sizer.ini, Settings, SnapOnSizeEnabled, 1          ; default: true
-    IniWrite, %SnapOnSizeEnabled%,       KDE_Mover-Sizer.ini, Settings, SnapOnSizeEnabled
-    IniRead,   SnapOnMoveEnabled,        KDE_Mover-Sizer.ini, Settings, SnapOnMoveEnabled, 1          ; default: true
-    IniWrite, %SnapOnMoveEnabled%,       KDE_Mover-Sizer.ini, Settings, SnapOnMoveEnabled
-    IniRead,   BorderlessSnappingAndDPI, KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI, %DefaultBorderlessSnappingAndDPI%
-    IniWrite, %BorderlessSnappingAndDPI%,KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI
-    IniRead,   ScalePerMonitorArea,      KDE_Mover-Sizer.ini, Settings, ScalePerMonitorArea, 0        ; default: false:keep same amount of window content. true:resize to match relative monitor area
-    IniWrite, %ScalePerMonitorArea%,     KDE_Mover-Sizer.ini, Settings, ScalePerMonitorArea
-    IniRead,   SnapOnResizeMagnetic,     KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic, 0       ; default: false
-    IniWrite, %SnapOnResizeMagnetic%,    KDE_Mover-Sizer.ini, Settings, SnapOnResizeMagnetic
-    IniRead,   DoRestoreOnResize,        KDE_Mover-Sizer.ini, Settings, DoRestoreOnResize,  1         ; default: true
-    IniWrite, %DoRestoreOnResize%,       KDE_Mover-Sizer.ini, Settings, DoRestoreOnResize
-    IniRead,   Use3x3ResizeGrid,         KDE_Mover-Sizer.ini, Settings, Use3x3ResizeGrid,  0          ; default: false (use 2x2 grid)
-    IniWrite, %Use3x3ResizeGrid%,        KDE_Mover-Sizer.ini, Settings, Use3x3ResizeGrid
-    IniRead,   DoubleAltShortcuts,       KDE_Mover-Sizer.ini, Settings, DoubleAltShortcuts,  1        ; default: true
-    IniWrite, %DoubleAltShortcuts%,      KDE_Mover-Sizer.ini, Settings, DoubleAltShortcuts
-    IniRead,   DoubleAlt_MaxDelay_ms,    KDE_Mover-Sizer.ini, Settings, DoubleAlt_MaxDelay_ms, 400
-    IniWrite, %DoubleAlt_MaxDelay_ms%,   KDE_Mover-Sizer.ini, Settings, DoubleAlt_MaxDelay_ms
-    IniRead,   DoubleAltMButton_ToggleOnTop,  KDE_Mover-Sizer.ini, Settings, DoubleAltMButton_ToggleOnTop,  0        ; default: false (DoubleALt+MButton does WinClose). True: instead, toggle Always-On-Top
-    IniWrite, %DoubleAltMButton_ToggleOnTop%, KDE_Mover-Sizer.ini, Settings, DoubleAltMButton_ToggleOnTop
+    IniReadWrite("SnapOnSizeEnabled",        "Settings", 1)          ; default: true
+    IniReadWrite("SnapOnMoveEnabled",        "Settings", 1)          ; default: true
+    IniReadWrite("BorderlessSnappingAndDPI", "Settings", DefaultBorderlessSnappingAndDPI)
+    IniReadWrite("KeepWindowToMonitorRatio", "Settings", 0)          ; default: false:keep same amount of window content. true:resize to match relative monitor area
+    IniReadWrite("SnapOnResizeMagnetic",     "Settings", 0)          ; default: false
+    IniReadWrite("DoRestoreOnResize",        "Settings", 1)          ; default: true
+    IniReadWrite("Use3x3ResizeGrid",         "Settings", 0)          ; default: false (use 2x2 grid)
+    IniReadWrite("DoubleAltShortcuts",       "Settings", 1)          ; default: true
+    IniReadWrite("DoubleAlt_MaxDelay_ms",    "Settings", 400)
+    IniReadWrite("DoubleAltMButton_ToggleAlwaysOnTop", "Settings", 0)        ; default: false (DoubleALt+MButton does WinClose). True: instead, toggle Always-On-Top
     
-    IniRead,   BringWindowToFront,       KDE_Mover-Sizer.ini, Settings, BringWindowToFront,  0        ; default: false (true: automatically brings window to front on drag)
-    IniWrite, %BringWindowToFront%,      KDE_Mover-Sizer.ini, Settings, BringWindowToFront
-    IniRead,   ShowWindowWhenDragging,   KDE_Mover-Sizer.ini, Settings, ShowWindowWhenDragging,  1    ; default: true
-    IniWrite, %ShowWindowWhenDragging%,  KDE_Mover-Sizer.ini, Settings, ShowWindowWhenDragging
-    IniRead,   SnappingDistance,         KDE_Mover-Sizer.ini, Settings, SnappingDistance, 10          ; default: 10 pixels
-    IniWrite, %SnappingDistance%,        KDE_Mover-Sizer.ini, Settings, SnappingDistance
+    IniReadWrite("BringWindowToFront",       "Settings",  0)        ; default: false (true: automatically brings window to front on drag)
+    IniReadWrite("ShowWindowWhenDragging",   "Settings",  1)        ; default: true
+    IniReadWrite("SnappingDistance",         "Settings", 10)        ; default: 10 pixels
     ; This is the setting that runs smoothest on my system. Depending on your video card and cpu power, 
     ; you may want to raise or lower this value.. System default: 100
-    IniRead,   WinDelay,                KDE_Mover-Sizer.ini, Settings, WinDelay, 2
-    IniWrite, %WinDelay%,               KDE_Mover-Sizer.ini, Settings, WinDelay
-    IniRead,   WindowIgnoreList,        KDE_Mover-Sizer.ini, Settings, WindowIgnoreList, %DefaultWindowIgnoreList%   ; Windows excluded for dragging (default: Windows Desktop tools)
-    IniWrite, %WindowIgnoreList%,       KDE_Mover-Sizer.ini, Settings, WindowIgnoreList
-    IniRead,   RunAsAdministrator,      KDE_Mover-Sizer.ini, Settings, RunAsAdministrator, 0           ; default: run as normal user
-    IniWrite, %RunAsAdministrator%,     KDE_Mover-Sizer.ini, Settings, RunAsAdministrator
-    IniRead,   HideTrayIcon,            KDE_Mover-Sizer.ini, Settings, HideTrayIcon, 0                 ; default is to show the icon
-    IniWrite, %HideTrayIcon%,           KDE_Mover-Sizer.ini, Settings, HideTrayIcon
+    IniReadWrite("WinDelay",                 "Settings",  2)
+    IniReadWrite("WindowIgnoreList",         "Settings", DefaultWindowIgnoreList)   ; Windows excluded for dragging (default: Windows Desktop tools)
+    IniReadWrite("RunAsAdministrator",       "Settings",  0)         ; default: run as normal user
+    IniReadWrite("HideTrayIcon",             "Settings",  0)         ; default is to show the icon
 
     ; Settings for hotkeys
     ;
     s := "Alt=!, Ctrl=^, Shift=+, LWin=#, AltGr=<^>!"
-    IniWrite,  %s%, KDE_Mover-Sizer.ini, Hotkeys, Hints_Hotkeys                                        ; quick hotkey reference
-    IniRead,   MovingWindow_Hotkey,     KDE_Mover-Sizer.ini, Hotkeys, MovingWindow_Hotkey, !           ; default: ! (Alt)
-    IniWrite,'%MovingWindow_Hotkey%',   KDE_Mover-Sizer.ini, Hotkeys, MovingWindow_Hotkey
-    IniRead,   MovingWindow_Mouse,      KDE_Mover-Sizer.ini, Hotkeys, MovingWindow_Mouse, LButton      ; default: LButton
-    IniWrite, %MovingWindow_Mouse%,     KDE_Mover-Sizer.ini, Hotkeys, MovingWindow_Mouse
+    IniReadWrite("Hints_Hotkeys",             "Hotkeys", s)                 ; quick hotkey reference
+    IniReadWrite("MovingWindow_Hotkey",       "Hotkeys", "!", quote:=1)     ; default: ! (Alt)
+    IniReadWrite("MovingWindow_Mouse",        "Hotkeys", "LButton")         ; default: LButton
+    IniReadWrite("ResizingWindow_Hotkey",     "Hotkeys", "!", quote:=1)     ; default: ! (Alt)
+    IniReadWrite("ResizingWindow_Mouse",      "Hotkeys", "RButton")         ; default: RButton
+    IniReadWrite("ToggleMaximize_Hotkey",     "Hotkeys", "!", quote:=1)     ; default: ! (Alt)
+    IniReadWrite("ToggleMaximize_Mouse",      "Hotkeys", "MButton")         ; default: MButton
 
-    IniRead,   ResizingWindow_Hotkey,   KDE_Mover-Sizer.ini, Hotkeys, ResizingWindow_Hotkey, !         ; default: ! (Alt)
-    IniWrite,'%ResizingWindow_Hotkey%', KDE_Mover-Sizer.ini, Hotkeys, ResizingWindow_Hotkey
-    IniRead,   ResizingWindow_Mouse,    KDE_Mover-Sizer.ini, Hotkeys, ResizingWindow_Mouse, RButton    ; default: RButton
-    IniWrite, %ResizingWindow_Mouse%,   KDE_Mover-Sizer.ini, Hotkeys, ResizingWindow_Mouse
+    IniReadWrite("DoubleKey_Hotkey2",         "Hotkeys", "Alt")             ; default: Alt
+    IniReadWrite("QuickPosition_Hotkey2",     "Hotkeys", "Alt" )            ; default: Alt
+    IniReadWrite("LockHorizVert_Hotkey2",     "Hotkeys", "Shift")           ; default: Shift
+    IniReadWrite("WindowToFront_Hotkey2",     "Hotkeys", "Control")         ; default: Control (during move/resize, activate window to bring to front)
 
-    IniRead,   ToggleMaximize_Hotkey,   KDE_Mover-Sizer.ini, Hotkeys, ToggleMaximize_Hotkey, !         ; default: ! (Alt)
-    IniWrite,'%ToggleMaximize_Hotkey%', KDE_Mover-Sizer.ini, Hotkeys, ToggleMaximize_Hotkey
-    IniRead,   ToggleMaximize_Mouse,    KDE_Mover-Sizer.ini, Hotkeys, ToggleMaximize_Mouse, MButton    ; default: MButton
-    IniWrite, %ToggleMaximize_Mouse%,   KDE_Mover-Sizer.ini, Hotkeys, ToggleMaximize_Mouse
+    IniReadWrite("DrawGridOverlay_Hotkey",    "Hotkeys", "!^", quote:=1)    ; default: !^ (Ctrl+Alt)
+    IniReadWrite("DrawGridOverlay_Mouse",     "Hotkeys", "RButton")         ; default: RButton, also used as OK for Colour Sampler
+    IniReadWrite("FreezeSampler_Mouse",       "Hotkeys", "LButton")         ; default: LButton, pins location of Colour Sampler
 
-    IniRead,   DoubleKey_Hotkey2,       KDE_Mover-Sizer.ini, Hotkeys, DoubleKey_Hotkey2, Alt           ; default: Alt
-    IniWrite, %DoubleKey_Hotkey2%,      KDE_Mover-Sizer.ini, Hotkeys, DoubleKey_Hotkey2
-    IniRead,   QuickPosition_Hotkey2,   KDE_Mover-Sizer.ini, Hotkeys, QuickPosition_Hotkey2, Alt       ; default: Alt
-    IniWrite, %QuickPosition_Hotkey2%,  KDE_Mover-Sizer.ini, Hotkeys, QuickPosition_Hotkey2
-    IniRead,   LockHorizVert_Hotkey2,   KDE_Mover-Sizer.ini, Hotkeys, LockHorizVert_Hotkey2, Shift     ; default: Shift
-    IniWrite, %LockHorizVert_Hotkey2%,  KDE_Mover-Sizer.ini, Hotkeys, LockHorizVert_Hotkey2
-    IniRead,   WindowToFront_Hotkey2,   KDE_Mover-Sizer.ini, Hotkeys, WindowToFront_Hotkey2, Control   ; default: Control (during move/resize, activate window to bring to front)
-    IniWrite, %WindowToFront_Hotkey2%,  KDE_Mover-Sizer.ini, Hotkeys, WindowToFront_Hotkey2
-
-    IniRead,   DrawGridOverlay_Hotkey,  KDE_Mover-Sizer.ini, Hotkeys, DrawGridOverlay_Hotkey, !^       ; default: !^ (Ctrl+Alt)
-    IniWrite,'%DrawGridOverlay_Hotkey%',KDE_Mover-Sizer.ini, Hotkeys, DrawGridOverlay_Hotkey
-    IniRead,   DrawGridOverlay_Mouse,   KDE_Mover-Sizer.ini, Hotkeys, DrawGridOverlay_Mouse, RButton   ; default: RButton, also used as OK for Colour Sampler
-    IniWrite, %DrawGridOverlay_Mouse%,  KDE_Mover-Sizer.ini, Hotkeys, DrawGridOverlay_Mouse
-    IniRead,   FreezeSampler_Mouse,     KDE_Mover-Sizer.ini, Hotkeys, FreezeSampler_Mouse, LButton     ; default: LButton, pins location of Colour Sampler
-    IniWrite, %FreezeSampler_Mouse%,    KDE_Mover-Sizer.ini, Hotkeys, FreezeSampler_Mouse
+    IniReadWrite("DragScroll_Hotkey",         "Hotkeys", A_Space, quote:=1) ; A_Space:none, *:all, ^:Ctrl, +:Shift, ...
+    IniReadWrite("DragScroll_Mouse",          "Hotkeys", "MButton")         ; MButton, LControl, ...
     
-    IniRead,   DragScroll_Hotkey,       KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Hotkey, %A_Space%     ; %A_Space%:none, *:all, ^:Ctrl, +:Shift, ...
-    IniWrite,'%DragScroll_Hotkey%',     KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Hotkey
-    IniRead,   DragScroll_Mouse,        KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Mouse, MButton        ; MButton, LControl, ...
-    IniWrite, %DragScroll_Mouse%,       KDE_Mover-Sizer.ini, Hotkeys, DragScroll_Mouse
+    IniReadWrite("ClipboardMenuCopy_Hotkey",  "Hotkeys", "^#", quote:=1)    ; default: Control + LWin + C
+    IniReadWrite("ClipboardMenuCopy_Button",  "Hotkeys", "C")
+    IniReadWrite("ClipboardMenuPaste_Hotkey", "Hotkeys", "^#", quote:=1)    ; default: Control + LWin + V
+    IniReadWrite("ClipboardMenuPaste_Button", "Hotkeys", "V")
 
     ; Settings for QuickPositionWindowOnEdge.
-    IniRead,   QuickPosition_EdgeSize_1,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_1, 0.125   ; QuickPosition "snapping" borders inside screen
-    IniWrite, %QuickPosition_EdgeSize_1%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_1
-    IniRead,   QuickPosition_EdgeSize_2,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_2, 0.25
-    IniWrite, %QuickPosition_EdgeSize_2%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_2
-    IniRead,   QuickPosition_EdgeSize_3,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_3, 0.333
-    IniWrite, %QuickPosition_EdgeSize_3%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_3
-    IniRead,   QuickPosition_EdgeSize_4,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_4, 0.382
-    IniWrite, %QuickPosition_EdgeSize_4%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_4
-    IniRead,   QuickPosition_EdgeSize_5,    KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_5, 0.5
-    IniWrite, %QuickPosition_EdgeSize_5%,   KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_5
-    IniRead,   QuickPosition_CenterSize_1,  KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Inner,  0.333  ; Window size of one edge, relative to screen size for inner center
-    IniWrite, %QuickPosition_CenterSize_1%, KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Inner
-    IniRead,   QuickPosition_CenterSize_2,  KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Middle, 0.5    ; Window size of one edge, relative to screen size for middle center ring
-    IniWrite, %QuickPosition_CenterSize_2%, KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Middle
-    IniRead,   QuickPosition_CenterSize_3,  KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Outer,  0.708  ; Window size of one edge, relative to screen size for outer center ring (1 - 2*0.382*0.382) 
-    IniWrite, %QuickPosition_CenterSize_3%, KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_CenterSize_Outer
+    IniReadWrite("QuickPosition_EdgeSize_1",   "QuickPositionSnapGrid", 0.125)  ; QuickPosition "snapping" borders inside screen. Adjust numbers of "EdgeSize" entries as preferred
+    IniReadWrite("QuickPosition_EdgeSize_2",   "QuickPositionSnapGrid", 0.25)
+    IniReadWrite("QuickPosition_EdgeSize_3",   "QuickPositionSnapGrid", 0.333)
+    IniReadWrite("QuickPosition_EdgeSize_4",   "QuickPositionSnapGrid", 0.382)
+    IniReadWrite("QuickPosition_EdgeSize_5",   "QuickPositionSnapGrid", 0.5)
+    IniReadWrite("QuickPosition_CenterSize_1", "QuickPositionSnapGrid", 0.333)  ; Window size of one edge, relative to screen size for inner center
+    IniReadWrite("QuickPosition_CenterSize_2", "QuickPositionSnapGrid", 0.5)    ; Window size of one edge, relative to screen size for middle center ring
+    IniReadWrite("QuickPosition_CenterSize_3", "QuickPositionSnapGrid", 0.708)  ; Window size of one edge, relative to screen size for outer center ring (1 - 2*0.382*0.382) 
 
     ; Settings for Draw Grid and colour sampler
     ;
-    IniRead,   EnableDrawGrid,          KDE_Mover-Sizer.ini, Special, EnableDrawGrid, 0                ; default: disabled
-    IniWrite, %EnableDrawGrid%,         KDE_Mover-Sizer.ini, Special, EnableDrawGrid
-    IniRead,   DrawGridShowDistance,    KDE_Mover-Sizer.ini, Special, DrawGridShowDistance, 1          ; default: no info box
-    IniWrite, %DrawGridShowDistance%,   KDE_Mover-Sizer.ini, Special, DrawGridShowDistance
-    IniRead,   DrawGridColour,          KDE_Mover-Sizer.ini, Special, DrawGridColour, White            ; default: White
-    IniWrite, %DrawGridColour%,         KDE_Mover-Sizer.ini, Special, DrawGridColour
-    IniRead,   DrawGridGUIOptions,      KDE_Mover-Sizer.ini, Special, DrawGridGUIOptions, +Border      ; default: +Border
-    IniWrite, %DrawGridGUIOptions%,     KDE_Mover-Sizer.ini, Special, DrawGridGUIOptions
-    IniRead,   DrawGridMouseAutoHold,   KDE_Mover-Sizer.ini, Special, DrawGridMouseAutoHold, 1         ; default: true, release grid with another click
-    IniWrite, %DrawGridMouseAutoHold%,  KDE_Mover-Sizer.ini, Special, DrawGridMouseAutoHold
-    IniRead,   DrawGridWidth,           KDE_Mover-Sizer.ini, Special, DrawGridWidth, 1                 ; default: 1px, make bigger if no border
-    IniWrite, %DrawGridWidth%,          KDE_Mover-Sizer.ini, Special, DrawGridWidth
-    IniRead,   ShowMeasuresAsToolTip,   KDE_Mover-Sizer.ini, Special, ShowMeasuresAsToolTip, 1         ; default: true
-    IniWrite, %ShowMeasuresAsToolTip%,  KDE_Mover-Sizer.ini, Special, ShowMeasuresAsToolTip
-    IniRead,   ShowMeasuresToolTip_X,   KDE_Mover-Sizer.ini, Special, ShowMeasuresToolTip_X, 3         ; default: top-left
-    IniWrite, %ShowMeasuresTooltip_X%,  KDE_Mover-Sizer.ini, Special, ShowMeasuresToolTip_X
-    IniRead,   ShowMeasuresToolTip_Y,   KDE_Mover-Sizer.ini, Special, ShowMeasuresToolTip_Y, 3         ; default: top-left
-    IniWrite, %ShowMeasuresTooltip_Y%,  KDE_Mover-Sizer.ini, Special, ShowMeasuresToolTip_Y
+    IniReadWrite("EnableDrawGrid",           "Special", 0)          ; default: disabled
+    IniReadWrite("DrawGridShowDistance",     "Special", 1)          ; default: no info box
+    IniReadWrite("DrawGridColour",           "Special", "White")    ; default: White
+    IniReadWrite("DrawGridGUIOptions",       "Special", "+Border")  ; default: +Border
+    IniReadWrite("DrawGridMouseAutoHold",    "Special", 1)          ; default: true, release grid with another click
+    IniReadWrite("DrawGridWidth",            "Special", 1)          ; default: 1px, make bigger if no border
+    IniReadWrite("ShowMeasuresAsToolTip",    "Special", 1)          ; default: true
+    IniReadWrite("ShowMeasuresToolTip_X",    "Special", 3)          ; default: top-left
+    IniReadWrite("ShowMeasuresToolTip_Y",    "Special", 3)          ; default: top-left
+    IniReadWrite("EnableClipboardMenu",      "Special", 1)          ; default: enabled
+    IniReadWrite("EnableClipboardPasteByNumbers","Special", 1)      ; default: enabled (allows to paste the clipboard directly by a number key, without going through the menu. good for not loosing focus.
+                                                                    ;          Disable if you want to keep the corresponding (windows) hotkeys
 
     ; Settings for (focusless) wheel scrolling
     ;
-    IniRead,   EnableFocuslessScroll,   KDE_Mover-Sizer.ini, Special, EnableFocuslessScroll, %DefaultEnableFocuslessScroll%  ; default: disabled for >=Win10 (still helpful for old apps, such as Office 2010)
-    IniWrite, %EnableFocuslessScroll%,  KDE_Mover-Sizer.ini, Special, EnableFocuslessScroll
+    IniReadWrite("EnableFocuslessScroll",    "Special", DefaultEnableFocuslessScroll)  ; default: disabled for >=Win10 (still helpful for old apps, such as Office 2010)
 
     ; Settings for special mouse features (mouse button clicks and scrolling with holding middle button (use with pointing sticks))
-    IniRead,   EnableDragScroll,        KDE_Mover-Sizer.ini, Special, EnableDragScroll, 1              ; default: enabled
-    IniWrite, %EnableDragScroll%,       KDE_Mover-Sizer.ini, Special, EnableDragScroll
+    IniReadWrite("EnableDragScroll",         "Special", 1)                             ; default: enabled
 
-    IniRead,   DragScrollMinStartDistance,           KDE_Mover-Sizer.ini, Special, DragScrollMinStartDistance, 3            ; this many pixels offset are required to determine direction and start drag-scrolling
-    IniWrite, %DragScrollMinStartDistance%,          KDE_Mover-Sizer.ini, Special, DragScrollMinStartDistance
-    IniRead,   DragScrollSpeedDivider,               KDE_Mover-Sizer.ini, Special, DragScrollSpeedDivider, 8                ; mouse must travel this many pixels for one full wheel scrollstep of 120
-    IniWrite, %DragScrollSpeedDivider%,              KDE_Mover-Sizer.ini, Special, DragScrollSpeedDivider
-    IniRead,   DragScrollMinMousespeedForFastAccel,  KDE_Mover-Sizer.ini, Special, DragScrollMinMousespeedForFastAccel, 40  ; if mouse is moved fast (i.e. pixel distance is larger than this value), increase scroll step
-    IniWrite, %DragScrollMinMousespeedForFastAccel%, KDE_Mover-Sizer.ini, Special, DragScrollMinMousespeedForFastAccel
-    IniRead,   DragScrollFastAccelMultiplier,        KDE_Mover-Sizer.ini, Special, DragScrollFastAccelMultiplier, 2.3       ; for fast mouse movements, increase scroll step by this factor
-    IniWrite, %DragScrollFastAccelMultiplier%,       KDE_Mover-Sizer.ini, Special, DragScrollFastAccelMultiplier
-    IniRead,   DragScrollMinUpdatePeriod_us,         KDE_Mover-Sizer.ini, Special, DragScrollMinUpdatePeriod_us, 15000      ; at maximum 1 wheel scroll event is send during this period (unit microseconds)
-    IniWrite, %DragScrollMinUpdatePeriod_us%,        KDE_Mover-Sizer.ini, Special, DragScrollMinUpdatePeriod_us
-    IniRead,   DragScrollIntervalDirectionChange_us, KDE_Mover-Sizer.ini, Special, DragScrollIntervalDirectionChange_us, 150000  ; allow change of horizontal/vertical movement only after this mouse-idle time (unit microseconds)
-    IniWrite, %DragScrollIntervalDirectionChange_us%,KDE_Mover-Sizer.ini, Special, DragScrollIntervalDirectionChange_us
-    IniRead,   DragScrollInvertScrollDirection,      KDE_Mover-Sizer.ini, Special, DragScrollInvertScrollDirection, 0       ; 0:scroll like dragging wheel, 1:scroll like dragging window content
-    IniWrite, %DragScrollInvertScrollDirection%,     KDE_Mover-Sizer.ini, Special, DragScrollInvertScrollDirection
+    IniReadWrite("DragScrollMinStartDistance",          "Special",   3)       ; this many pixels offset are required to determine direction and start drag-scrolling
+    IniReadWrite("DragScrollSpeedDivider",              "Special",   8)       ; mouse must travel this many pixels for one full wheel scrollstep of 120
+    IniReadWrite("DragScrollMinMousespeedForFastAccel", "Special",  40)       ; if mouse is moved fast (i.e. pixel distance is larger than this value), increase scroll step
+    IniReadWrite("DragScrollFastAccelMultiplier",       "Special", 2.3)       ; for fast mouse movements, increase scroll step by this factor
+    IniReadWrite("DragScrollMinUpdatePeriod_us",        "Special",  15000)    ; at maximum 1 wheel scroll event is send during this period (unit microseconds)
+    IniReadWrite("DragScrollIntervalDirectionChange_us","Special", 150000)    ; allow change of horizontal/vertical movement only after this mouse-idle time (unit microseconds)
+    IniReadWrite("DragScrollInvertScrollDirection",     "Special",   0)       ; 0:scroll like dragging wheel, 1:scroll like dragging window content
     
-    IniRead,   DragScrollWindowIgnoreList,           KDE_Mover-Sizer.ini, Settings,DragScrollWindowIgnoreList, %A_Space%    ; apps that want MButton events instead Wheel events (e.g. when they have their own MButton Scroller)
-    IniWrite, %DragScrollWindowIgnoreList%,          KDE_Mover-Sizer.ini, Settings,DragScrollWindowIgnoreList
-    IniRead,   DragScrollFullScrollStepWindowList,   KDE_Mover-Sizer.ini, Settings,DragScrollFullScrollStepWindowList, notepad.exe,notepad++.exe,    ; apps which expect scroll steps in multiples of 120
-    IniWrite, %DragScrollFullScrollStepWindowList%,  KDE_Mover-Sizer.ini, Settings,DragScrollFullScrollStepWindowList
+    IniReadWrite("DragScrollWindowIgnoreList",          "Settings", "freecad.exe,")               ; apps that want MButton events instead Wheel events (e.g. when they have their own MButton Scroller)
+    IniReadWrite("DragScrollFullScrollStepWindowList",  "Settings", "notepad.exe,notepad++.exe,") ; apps which expect scroll steps in multiples of 120
 
     ; Mappings and status for key shortcuts to special characters
     ;
-    IniRead,   EnableSpecialCharacters,  KDE_Mover-Sizer.ini, SpecialCharacters, EnableSpecialCharacters, 0          ; default: disabled
-    IniWrite, %EnableSpecialCharacters%, KDE_Mover-Sizer.ini, SpecialCharacters, EnableSpecialCharacters
-    IniRead,   SpecialCharactersTrig_1,  KDE_Mover-Sizer.ini, SpecialCharacters, SpecialCharactersTrig_1, <^>!c      ; default: AltGr+c
-    IniWrite, %SpecialCharactersTrig_1%, KDE_Mover-Sizer.ini, SpecialCharacters, SpecialCharactersTrig_1
-    IniRead,   SpecialCharactersChar_1,  KDE_Mover-Sizer.ini, SpecialCharacters, SpecialCharactersChar_1, ç
-    IniWrite, %SpecialCharactersChar_1%, KDE_Mover-Sizer.ini, SpecialCharacters, SpecialCharactersChar_1
-    IniRead,   SpecialCharactersTrig_2,  KDE_Mover-Sizer.ini, SpecialCharacters, SpecialCharactersTrig_2, <^>!+c     ; default: AltGr+C
-    IniWrite, %SpecialCharactersTrig_2%, KDE_Mover-Sizer.ini, SpecialCharacters, SpecialCharactersTrig_2
-    IniRead,   SpecialCharactersChar_2,  KDE_Mover-Sizer.ini, SpecialCharacters, SpecialCharactersChar_2, Ç
-    IniWrite, %SpecialCharactersChar_2%, KDE_Mover-Sizer.ini, SpecialCharacters, SpecialCharactersChar_2
+    IniReadWrite("EnableSpecialCharacters", "SpecialCharacters", "0")          ; default: disabled
+    IniReadWrite("SpecialCharactersTrig_1", "SpecialCharacters", "<^>!c")      ; default: AltGr+c
+    IniReadWrite("SpecialCharactersChar_1", "SpecialCharacters", "ç")
+    IniReadWrite("SpecialCharactersTrig_2", "SpecialCharacters", "<^>!+c")     ; default: AltGr+C
+    IniReadWrite("SpecialCharactersChar_2", "SpecialCharacters", "Ç")
     
     ; enable(=1)/disable(=0) a special feature. If they are disabled here, they are also hidden in the AddOn menu.
     ;
     s := "If the AddOns are disabled here, they are not shown in the Special Features menu."
-    IniWrite,  %s%, KDE_Mover-Sizer.ini, AddOns, Hints_AddOns
-    IniRead,   AddOnEnable_SpecialCharacters,  KDE_Mover-Sizer.ini, AddOns, AddOnEnable_SpecialCharacters, 0
-    IniWrite, %AddOnEnable_SpecialCharacters%, KDE_Mover-Sizer.ini, AddOns, AddOnEnable_SpecialCharacters
-    IniRead,   AddOnEnable_ColourSampler,      KDE_Mover-Sizer.ini, AddOns, AddOnEnable_ColourSampler, 0
-    IniWrite, %AddOnEnable_ColourSampler%,     KDE_Mover-Sizer.ini, AddOns, AddOnEnable_ColourSampler
-    IniRead,   AddOnEnable_DrawGrid,           KDE_Mover-Sizer.ini, AddOns, AddOnEnable_DrawGrid, 0
-    IniWrite, %AddOnEnable_DrawGrid%,          KDE_Mover-Sizer.ini, AddOns, AddOnEnable_DrawGrid
+    IniReadWrite("Hints_AddOns",                    "AddOns", s)
+    IniReadWrite("AddOnEnable_SpecialCharacters",   "AddOns", 0)
+    IniReadWrite("AddOnEnable_ColourSampler",       "AddOns", 0)
+    IniReadWrite("AddOnEnable_DrawGrid",            "AddOns", 0)
+    IniReadWrite("AddOnEnable_ClipboardMenu",       "AddOns", 0)
 
     ; Check if INI file was written successfully
     If NOT FileExist("KDE_Mover-Sizer.ini")
@@ -534,7 +487,7 @@ InitQuickPositionWindowOnEdge:
     sizecnt := 1 ; [1]=0 -> next free index is 2
     
     Loop, 20 {
-        IniRead, a_QuickPosition_Size,  KDE_Mover-Sizer.ini, QuickPosition, QuickPosition_EdgeSize_%A_Index%, %A_Space%
+        IniRead, a_QuickPosition_Size,  KDE_Mover-Sizer.ini, QuickPositionSnapGrid, QuickPosition_EdgeSize_%A_Index%, %A_Space%
         If !a_QuickPosition_Size
             Break
         sizecnt := sizecnt + 1
@@ -619,7 +572,17 @@ InitHotkeyHandler:
     
     if (AddOnEnable_DrawGrid = 1 AND EnableDrawGrid = 1)
         Hotkey, %DrawGridOverlay_Hotkey%%DrawGridOverlay_Mouse%, DoDrawGridOverlay, On
-
+    
+    if (AddOnEnable_ClipboardMenu = 1 AND EnableClipboardMenu = 1)
+    {
+        Hotkey, %ClipboardMenuCopy_Hotkey%%ClipboardMenuCopy_Button%, ClipboardMenuCopy, On
+        Hotkey, %ClipboardMenuPaste_Hotkey%%ClipboardMenuPaste_Button%, ClipboardMenuPaste, On
+        
+        If EnableClipboardPasteByNumbers
+            Loop, %ClipboardMenu_NumberOfClipboards%
+                Hotkey, %ClipboardMenuPaste_Hotkey%%A_Index%, ClipboardMenuPasteByNumber, On
+    }
+    
     ; Special Characters hotkey: Read keys and set Special Characters hotkey handler
     if (AddOnEnable_SpecialCharacters = 1 AND EnableSpecialCharacters = 1)
     {
@@ -662,10 +625,12 @@ PrepareMenu:
     Menu, MySpecialMenu, add, Toggle Window-Always-On-Top.., MenuToggleAlwaysOnTop
     Menu, MySpecialMenu, add
 
-    if AddOnEnable_SpecialCharacters {
-        Menu, MySpecialMenu, add, Enable Hotkeys to insert Special Characters, MenuEnableSpecialCharacters
+    if AddOnEnable_SpecialCharacters
+        Menu, MySpecialMenu, add, Enable Insert of Special Characters, MenuEnableSpecialCharacters
+    if AddOnEnable_ClipboardMenu
+        Menu, MySpecialMenu, add, Enable Multi-Clipboard, MenuEnableClipboardMenu
+    if ( AddOnEnable_SpecialCharacters OR AddOnEnable_ClipboardMenu )
         Menu, MySpecialMenu, add
-    }
     
     ; Create options menu for DragScrolling
     Menu, MySpecialMenuDragScrolling, add, Invert Scroll Direction, MenuDragScrollInvertScrollDirection
@@ -683,7 +648,7 @@ PrepareMenu:
     Menu, MySpecialMenu, add, Enable Drag Scrolling by holding Mouse Button, MenuEnableDragScroll
     Menu, MySpecialMenu, add, Options for Drag Scrolling.., :MySpecialMenuDragScrolling
 
-    if ( (AddOnEnable_SpecialCharacters) AND ( AddOnEnable_DrawGrid OR AddOnEnable_ColourSampler ) )
+    if ( AddOnEnable_DrawGrid OR AddOnEnable_ColourSampler )
         Menu, MySpecialMenu, add
 
     if AddOnEnable_ColourSampler {
@@ -696,14 +661,17 @@ PrepareMenu:
         Menu, MySpecialMenu, add, Show Grid Measures, MenuDrawGridShowDistance
         Menu, MySpecialMenu, add
     }
-    if (AddOnEnable_ColourSampler = 1 OR AddOnEnable_DrawGrid = 1)
+    if ( AddOnEnable_DrawGrid OR AddOnEnable_ColourSampler )
         Menu, MySpecialMenu, add, Show Measures as ToolTip, MenuShowMeasuresAsToolTip
 
+    Menu, MySpecialMenu, add
+    Menu, MySpecialMenu, add, Hide Tray Icon, MenuHideIcon
+  
     ; Create Options-, Ignore- and Hotkey Menu
     ;
     Menu, MyOptionsMenu, add, Snap on Move, MenuSnapOnMoveHandler
     Menu, MyOptionsMenu, add, Snap on Resize, MenuSnapOnSizeHandler
-    Menu, MyOptionsMenu, add, Keep relative Size across Monitors, MenuScalePerMonitorArea
+    Menu, MyOptionsMenu, add, Keep Relative Size across Monitors, MenuKeepWindowToMonitorRatio
     Menu, MyOptionsMenu, add
     Menu, MyOptionsMenu, add, Magnetic Resizing, MenuSnapOnResizeMagnetic
     Menu, MyOptionsMenu, add, Resize restores Maximized Window, MenuDoRestoreOnResize
@@ -746,8 +714,6 @@ PrepareMenu:
     Menu, tray, add, Run as administrator, MenuRunAsAdmin
     Menu, tray, add, Automatically run on startup, MenuStartupShortcut
     Menu, tray, add
-    Menu, tray, add, Hide Tray Icon, MenuHideIcon
-    Menu, tray, add
     Menu, tray, add, Exit, MenuExit
 
     ; Set initial "enable" Checks in menu according to configuration variables
@@ -761,13 +727,15 @@ PrepareMenu:
         if DrawGridShowDistance
             Menu, MySpecialMenu, Check, Show Grid Measures
     }
-    if (AddOnEnable_DrawGrid = 1 OR AddOnEnable_ColourSampler = 1)
+    if (AddOnEnable_DrawGrid OR AddOnEnable_ColourSampler)
         if ShowMeasuresAsToolTip
             Menu, MySpecialMenu, Check, Show Measures as ToolTip
 
-    if AddOnEnable_SpecialCharacters
-        if EnableSpecialCharacters
-            Menu, MySpecialMenu, Check, Enable Hotkeys to insert Special Characters
+    if (AddOnEnable_SpecialCharacters AND EnableSpecialCharacters)
+        Menu, MySpecialMenu, Check, Enable Insert of Special Characters
+
+    if (AddOnEnable_ClipboardMenu AND EnableClipboardMenu)
+        Menu, MySpecialMenu, Check, Enable Multi-Clipboard
 
     if EnableFocuslessScroll
         Menu, MySpecialMenu, Check, Enable Wheel Scrolling on inactive Windows
@@ -784,8 +752,8 @@ PrepareMenu:
         Menu, MyOptionsMenu, Check, Snap on Move
     if SnapOnSizeEnabled
         Menu, MyOptionsMenu, Check, Snap on Resize
-    if ScalePerMonitorArea
-        Menu, MyOptionsMenu, Check, Keep relative Size across Monitors
+    if KeepWindowToMonitorRatio
+        Menu, MyOptionsMenu, Check, Keep Relative Size across Monitors
     if BringWindowToFront
         Menu, MyOptionsMenu, Check, Bring Windows to Front on dragging
     if ShowWindowWhenDragging
@@ -843,15 +811,15 @@ MenuSnapOnSizeHandler:
         Gosub, MenuSnapOnResizeMagnetic
     return
 
-MenuScalePerMonitorArea:
-    Menu, MyOptionsMenu, ToggleCheck, Keep relative Size across Monitors
-    ScalePerMonitorArea := NOT ScalePerMonitorArea
-    If ScalePerMonitorArea
-        Traytip, Maintain Window-to-Monitor ratio, Move across monitors will resize to keep the same window-to-screen-area ratio,30,%TRAYICON_NOSOUND%
+MenuKeepWindowToMonitorRatio:
+    Menu, MyOptionsMenu, ToggleCheck, Keep Relative Size across Monitors
+    KeepWindowToMonitorRatio := NOT KeepWindowToMonitorRatio
+    If KeepWindowToMonitorRatio
+        Traytip, Maintain Window-to-Monitor ratio, Move across monitors will resize to keep the same window-to-screen ratio,30,%TRAYICON_NOSOUND%
     Else
         Traytip, Maintain Window content, Move across monitors will resize to match different DPI settings and keep same amount of window content (Windows default),30,%TRAYICON_NOSOUND%
 
-    IniWrite, %ScalePerMonitorArea%, KDE_Mover-Sizer.ini, Settings, ScalePerMonitorArea
+    IniWrite, %KeepWindowToMonitorRatio%, KDE_Mover-Sizer.ini, Settings, KeepWindowToMonitorRatio
     return
 
 MenuDoubleAltShortcuts:
@@ -1125,12 +1093,23 @@ MenuToggleAlwaysOnTop:
     return
 
 MenuEnableSpecialCharacters:
-    Menu, MySpecialMenu, ToggleCheck, Enable Hotkeys to insert Special Characters
+    Menu, MySpecialMenu, ToggleCheck, Enable Insert of Special Characters
     EnableSpecialCharacters := NOT EnableSpecialCharacters
     IniWrite, %EnableSpecialCharacters%, KDE_Mover-Sizer.ini, SpecialCharacters, EnableSpecialCharacters
     Gosub, InitHotkeyHandler
     If EnableSpecialCharacters
         Traytip, Key Shortcuts for Special Characters enabled, % "Use this to create up to 15 key shortcuts to insert special characters, e.g. for foreign languages. Configure hotkeys and characters in Ini file. Example (default): Press AltGr+c for ç.",30,%TRAYICON_NOSOUND%
+    Else
+        Reload
+    return
+
+MenuEnableClipboardMenu:
+    Menu, MySpecialMenu, ToggleCheck, Enable Multi-Clipboard
+    EnableClipboardMenu := NOT EnableClipboardMenu
+    IniWrite, %EnableClipboardMenu%, KDE_Mover-Sizer.ini, Special, EnableClipboardMenu
+    Gosub, InitHotkeyHandler
+    If EnableClipboardMenu
+        Traytip, Key Shortcuts for Multi-Clipboard Menu enabled, % "Press " . strname(ClipboardMenuCopy_Hotkey) . "+" . strname(ClipboardMenuCopy_Button) . "+number to save clipboard on this position. Press " . strname(ClipboardMenuPaste_Hotkey) . "+" . strname(ClipboardMenuPaste_Button) . " or " . strname(ClipboardMenuPaste_Hotkey) . "+<NumKey> to paste.",30,%TRAYICON_NOSOUND%
     Else
         Reload
     return
@@ -1250,19 +1229,19 @@ MenuStartupShortcut:
            . "Click OK to create a lnk file:`r`n" . startupLinkFile . "`r`n"
         IfMsgBox OK
         {
-            Args   := ""
+            args := ""
             If A_IsCompiled {
-                target := Chr(34) A_ScriptFullPath Chr(34)
+                target := Chr(34) . A_ScriptFullPath . Chr(34)
                 KMSIconFile := target
             }
             Else {
-                target := A_AhkPath
-                Args   := Chr(34) A_ScriptFullPath Chr(34)
+                target := Chr(34) . A_AhkPath . Chr(34)
+                args   := Chr(34) . A_ScriptFullPath . Chr(34)
             }
             If FileExist(KMSIconFile)
-                FileCreateShortcut, %target%, %startupLinkFile%, %A_ScriptDir%, %Args%, KDE Mover-Sizer, %KMSIconFile%
+                FileCreateShortcut, %target%, %startupLinkFile%, %A_ScriptDir%, %args%, KDE Mover-Sizer, %KMSIconFile%
             Else
-                FileCreateShortcut, %target%, %startupLinkFile%, %A_ScriptDir%, %Args%, KDE Mover-Sizer
+                FileCreateShortcut, %target%, %startupLinkFile%, %A_ScriptDir%, %args%, KDE Mover-Sizer
         }
     }
     
@@ -1284,11 +1263,12 @@ MenuHideIcon:
     HideTrayIcon = 1
     IniWrite, %HideTrayIcon%, KDE_Mover-Sizer.ini, Settings, HideTrayIcon
     Menu,Tray,NoIcon
+    Gosub, MenuEditMyIni
     return
 
 MenuAbout:
     DoubleAltShortcutsHelptext := ""
-    If DoubleAltMButton_ToggleOnTop
+    If DoubleAltMButton_ToggleAlwaysOnTop
         DoubleAltMButtonHelptext := "Toggle Always-on-Top."
     Else
         DoubleAltMButtonHelptext := "Close a window."
@@ -1385,7 +1365,7 @@ DoMovingWindowMinimize:
     ; ********************************************
     ; Init-stuff /before/ switching DPI context
 
-    Gosub, DisableDoubleAndCatchHotkeys
+    Gosub, DisableDoubleKeyAndCatchHotkeys
 
     ; WinRestore 1st part
     WinGet, KDE_WinMaximized,MinMax,ahk_id %KDE_id%
@@ -1428,7 +1408,7 @@ DoMovingWindowMinimize:
     ; Get the initial window position.
     WinGetPos, KDE_WinX1, KDE_WinY1, KDE_WinW, KDE_WinH, ahk_id %KDE_id%
     
-    If ScalePerMonitorArea
+    If KeepWindowToMonitorRatio
     {
         GetCurrentScreenBorders(KDE_WinX1 + (KDE_WinW>>1),KDE_WinY1 + (KDE_WinH>>1), scrleft, scrright, scrtop, scrbottom)
         scrWidthCurrent  := scrright - scrleft
@@ -1485,11 +1465,11 @@ DoMovingWindowMinimize:
         MouseGetPos,MouseX,MouseY ; Get the current mouse position.
 
         ; When moving a (PER_MONITOR_AWARE)) window to a monitor with a different DPI, scale the window size accordingly.
-        ; ScalePerMonitorArea = 0: scale so that the window content stays the same (e.g. line breaks in editor)
+        ; KeepWindowToMonitorRatio = 0: scale so that the window content stays the same (e.g. line breaks in editor)
         ;   -> assumes default scaling (e.g. notepad). Special scaling (e.g. conhost.exe) is ignored.
         ; This is again a window thing: SYSTEM_AWARE apps scale automatically, MONITOR_AWARE apps take size in actual screen pixels
-        ; ScalePerMonitorArea = 1: scale so that (relative) screen area stays the same, using current screen borders instead of DPI
-        If (ScalePerMonitorArea = 0 AND BorderlessSnappingAndDPI AND wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE)
+        ; KeepWindowToMonitorRatio = 1: scale so that (relative) screen area stays the same, using current screen borders instead of DPI
+        If (KeepWindowToMonitorRatio = 0 AND BorderlessSnappingAndDPI AND wndDpiAwareness = DPI_AWARENESS_PER_MONITOR_AWARE)
         {
             ; Scale based on DPI
             If ShowWindowWhenDragging
@@ -1505,7 +1485,7 @@ DoMovingWindowMinimize:
                 KDE_WinH := ceil(KDE_WinH * wndScale)
             }
         }
-        If (ScalePerMonitorArea = 1)
+        If (KeepWindowToMonitorRatio = 1)
         {
             ; Scale based on relative per-monitor area
             GetCurrentScreenBorders(KDE_WinX2 + (KDE_WinW>>1),KDE_WinY2 + (KDE_WinH>>1), scrleft, scrright, scrtop, scrbottom)
@@ -1607,7 +1587,7 @@ DoMovingWindowMinimize:
         ; If we move a MONITOR_AWARE window to a different screen for the first time, Windows will scale automatically _after_ our move command,
         ; so our (already scaled) width and height will no longer match.
         ; For this case, we could pre-(un)scale width and height and let windows do the scaling
-        ; But this was not possible for ScalePerMonitorArea -> Just draw the window twice
+        ; But this was not possible for KeepWindowToMonitorRatio -> Just draw the window twice
 
         DrawRectFrame_Cancel()
         If Esc_Button = U
@@ -1622,7 +1602,7 @@ DoMovingWindowMinimize:
     If BorderlessSnappingAndDPI
         RestoreWindowSpecificDpiAwarenessContext(wndDpiAwareness)
 
-    Gosub, EnableDoubleAndReleaseHotkeys
+    Gosub, EnableDoubleKeyAndReleaseHotkeys
 
     return
 
@@ -1669,7 +1649,7 @@ DoResizingWindowMaximize:
     ; ********************************************
     ; Init-stuff /before/ switching DPI context
 
-    Gosub, DisableDoubleAndCatchHotkeys
+    Gosub, DisableDoubleKeyAndCatchHotkeys
 
     ; Get the initial mouse position and window id, and
     ; do WinRestore if the window is maximized.
@@ -2045,7 +2025,7 @@ DoResizingWindowMaximize:
         RestoreWindowSpecificDpiAwarenessContext(wndDpiAwareness)
     
     ; reenable DoubleKey_Hotkey
-    Gosub, EnableDoubleAndReleaseHotkeys
+    Gosub, EnableDoubleKeyAndReleaseHotkeys
     
     return
 
@@ -2073,7 +2053,7 @@ DoToggleMaximize:
         If ( ToggleMaximize_Hotkey != "" OR A_TimeSincePriorHotkey < 5000 )  ; ignore DoubleAlt when there is no modifier hotkey for and it has occurred more than 5sec ago
         {
             MouseGetPos, ,,KDE_id
-            If DoubleAltMButton_ToggleOnTop {
+            If DoubleAltMButton_ToggleAlwaysOnTop {
                 Traytip, Toggle Always-on-Top, Window toggled between "always in foreground" and normal behaviour.,30,,%TRAYICON_NOSOUND%
                 WinSet AlwaysOnTop, Toggle, ahk_id %KDE_id%
             }
@@ -2133,14 +2113,14 @@ OnDoubleKey:
 ; Reassigning/Disabling hotkey to DoNothing had occasionnally quirks in a way that 
 ; during (starting?) a Moving/Resizing operation, the OnDoubleKey triggered again
 ; and interrupted the ongoing moving operation -> use DoubleKeyBypass flag and see if this solves it
-DisableDoubleAndCatchHotkeys:
+DisableDoubleKeyAndCatchHotkeys:
     DoubleKeyBypass := 1
     Hotkey, *Escape, On
     if (DoubleAltShortcuts = 0 OR QuickPosition_Hotkey2 != DoubleKey_Hotkey2)
         Hotkey, ~%QuickPosition_Hotkey2%, On
     return
 
-EnableDoubleAndReleaseHotkeys:
+EnableDoubleKeyAndReleaseHotkeys:
     DoubleKeyBypass := 0
     Hotkey, *Escape, Off
     if (DoubleAltShortcuts = 0 OR QuickPosition_Hotkey2 != DoubleKey_Hotkey2)
@@ -2488,6 +2468,62 @@ getAvgPixelGetColor( MX, MY, avg )
     return r
 }
 
+; ***************************************************************
+; *************  ACTION: Multi-Entry Clipboard Extension ********
+; ***************************************************************
+ClipboardMenuCopy:
+    Clipboard := ""
+    Send ^c
+    clipboardCopy := 1
+    Gosub, ClipboardMenuUpdate
+    Menu, ClipboardMenu, Show
+    return
+
+ClipboardMenuPaste:
+    clipboardCopy := 0
+    Gosub, ClipboardMenuUpdate
+    Menu, ClipboardMenu, Show
+    return
+
+ClipboardMenuPasteByNumber:
+    clipKey := SubStr(A_ThisHotkey, 0, 1)
+    if (StrLen(clip%clipKey%) > 0) {
+        Clipboard := ""
+        Clipboard := clip%clipKey%
+        ClipWait,1, 1
+        Send ^v
+    }
+    return
+
+ClipboardMenuUpdate:
+    Menu, ClipboardMenu, add
+    Menu, ClipboardMenu, DeleteAll
+    if clipboardCopy
+        Menu, ClipboardMenu, add, ..copy to.., DoNothing
+    else
+        Menu, ClipboardMenu, add, ..paste from.., DoNothing
+    Menu, ClipboardMenu, add
+    Loop, %ClipboardMenu_NumberOfClipboards%
+        Menu, ClipboardMenu, add, % "&" . A_Index . ": " . clipText%A_Index%, ClipboardMenuHandle
+    return
+
+ClipboardMenuHandle:
+    clipKey := A_ThisMenuItemPos -2
+    if clipboardCopy {   ; Copy
+        ClipWait,1, 1
+        clip%clipKey% := ClipboardAll
+        clipText%clipKey% := Trim(StrReplace(SubStr(Clipboard, 1, 30),"&"))
+    }
+    else {               ; Paste
+        if (StrLen(clip%clipKey%) > 0) {
+            Clipboard := ""
+            Clipboard := clip%clipKey%
+            ClipWait,1, 1
+            Send ^v
+        }
+    }
+    return
+
 ; *******************************************************************************************************************************
 ; *************  ACTION: Send scroll events to window under mouse cursor, even if window is not active (shimanov, scoox) ********
 ; *******************************************************************************************************************************
@@ -2555,7 +2591,7 @@ DoDragScroll:
         return
     }
 
-    Gosub, DisableDoubleAndCatchHotkeys
+    Gosub, DisableDoubleKeyAndCatchHotkeys
 
     MouseGetPos,,, MBWinID, MBCtrlHnd, 3
     If ( MBCtrlHnd = "" )
@@ -2601,7 +2637,7 @@ DoDragScroll:
         sleep, 1 ; occasionally, Drag Mouse button got stuck during heavy clicking. Split into Down+Up and add sleep, just to be on the safe..
     }
 
-    Gosub, EnableDoubleAndReleaseHotkeys
+    Gosub, EnableDoubleKeyAndReleaseHotkeys
     
     return
 
@@ -2619,59 +2655,62 @@ DragScrollMouseHook(nCode, wParam, lParam) {
     Global DragScrollMouseMove, DragScrollX,DragScrollY, DragScrollIsRunning, DragScrollXDelta,DragScrollYDelta, DragScrollXDeltaIncr,DragScrollYDeltaIncr
          , DragScrollStartDistance, DragScrollMinUpdatePeriod_us, DragScrollIntervalDirectionChange_us, DragScrollMouseHasMoved, MBwmID, DragScrollState  ; , MButtonHistory
     
-    If (nCode >= 0 AND wParam = 0x0200)
-    { ; WM_MOUSEMOVE = 0x0200
-        xdelta := -NumGet(lParam+0,0, "Int") + DragScrollX ; reverse direction for x-scroll
-        ydelta := NumGet(lParam+0,4, "Int") - DragScrollY
-        DragScrollXDelta += xdelta    ; MouseX movement in per-monitor-aware screen coordinates
-        DragScrollYDelta += ydelta    ; MouseY movement in per-monitor-aware screen coordinates
+    ; WM_MOUSEMOVE = 0x0200
+    If (nCode < 0 OR wParam != 0x0200)
+        Return, DllCall("CallNextHookEx", "UInt",0, "Int",nCode, "UInt",wParam, "UInt",lParam)
 
-        If DragScrollQPCus() <= DragScrollMinUpdatePeriod_us
-            Return, 1
-
-        If (DragScrollState != 0 AND DragScrollQPCus() > DragScrollIntervalDirectionChange_us) {      ; allow change of direction when mouse was resting in place
-            DragScrollState := 0
-            , DragScrollXDelta := 0
-            , DragScrollYDelta := 0
-        }
-        
-        absDragScrollXDelta := abs(DragScrollXDelta)
-        , absDragScrollYDelta := abs(DragScrollYDelta)
-
-        If (DragScrollState = 0 AND (ydelta != 0 OR xdelta != 0)) {
-            If (absDragScrollXDelta >= DragScrollStartDistance OR absDragScrollYDelta >= DragScrollStartDistance)
-            {
-                If (absDragScrollYDelta >= absDragScrollXDelta)
-                    DragScrollState := 1
-                Else
-                    DragScrollState := 2
-            }
-        }
-        
-        If (DragScrollIsRunning = 0 AND DragScrollState = 1 AND ydelta != 0 AND absDragScrollYDelta >= DragScrollYDeltaIncr) {
-            DragScrollIsRunning := 1
-            DragScrollMouseMove := DragScrollYDelta //DragScrollYDeltaIncr *DragScrollYDeltaIncr  ; "floor" to multiples of delta increment using integer division
-            , DragScrollYDelta  -= DragScrollMouseMove
-            , DragScrollXDelta  := 0
-            , DragScrollQPCus(1)
-            , MBwmID := WM_MOUSEWHEEL
-            SetTimer, DragScrollHandler, -1
-        }
-        If (DragScrollIsRunning = 0 AND DragScrollState = 2 AND xdelta != 0 AND absDragScrollXDelta >= DragScrollXDeltaIncr) {
-            DragScrollIsRunning := 1
-            DragScrollMouseMove := DragScrollXDelta //DragScrollXDeltaIncr *DragScrollXDeltaIncr  ; "floor" to multiples of delta increment using integer division
-            , DragScrollXDelta  -= DragScrollMouseMove
-            , DragScrollYDelta  := 0
-            , DragScrollQPCus(1)
-            , MBwmID := WM_MOUSEHWHEEL
-            SetTimer, DragScrollHandler, -1
-        }
-        ;Tooltip, % "2-X/Y: " DragScrollX " / " DragScrollY "   delta: " xdelta " / " ydelta "   Ds-X/Y-Delta: " DragScrollXDelta " / " DragScrollYDelta "   State: " DragScrollState
-        ;   . " DSMouseMove:" DragScrollMouseMove "  MBwmID:" MBwmID ; "`n" MButtonHistory
-
+    ; reverse direction for x-scroll
+    xdelta := -NumGet(lParam+0,0, "Int") + DragScrollX
+    ydelta := NumGet(lParam+0,4, "Int") - DragScrollY
+    ; MouseX&Y movement in per-monitor-aware screen coordinates
+    DragScrollXDelta += xdelta
+    , DragScrollYDelta += ydelta
+    
+    If DragScrollQPCus() <= DragScrollMinUpdatePeriod_us
         Return, 1
+
+    ; allow change of direction when mouse was resting in place
+    If (DragScrollState != 0 AND DragScrollQPCus() > DragScrollIntervalDirectionChange_us)
+        DragScrollState := 0
+        , DragScrollXDelta := 0
+        , DragScrollYDelta := 0
+    
+    absDragScrollXDelta := abs(DragScrollXDelta)
+    , absDragScrollYDelta := abs(DragScrollYDelta)
+
+    If (DragScrollState = 0 AND (ydelta != 0 OR xdelta != 0)) {
+        If (absDragScrollXDelta >= DragScrollStartDistance OR absDragScrollYDelta >= DragScrollStartDistance)
+        {
+            If (absDragScrollYDelta >= absDragScrollXDelta)
+                DragScrollState := 1
+            Else
+                DragScrollState := 2
+        }
     }
-    Return, DllCall("CallNextHookEx", "UInt",0, "Int",nCode, "UInt",wParam, "UInt",lParam)
+    
+    If (DragScrollIsRunning = 0 AND DragScrollState = 1 AND ydelta != 0 AND absDragScrollYDelta >= DragScrollYDeltaIncr) {
+        DragScrollIsRunning := 1
+        ; "floor" to multiples of delta increment using integer division
+        DragScrollMouseMove := DragScrollYDelta //DragScrollYDeltaIncr *DragScrollYDeltaIncr
+        , DragScrollYDelta  -= DragScrollMouseMove
+        , DragScrollXDelta  := 0
+        , DragScrollQPCus(1)
+        , MBwmID := WM_MOUSEWHEEL
+        SetTimer, DragScrollHandler, -1
+    }
+    If (DragScrollIsRunning = 0 AND DragScrollState = 2 AND xdelta != 0 AND absDragScrollXDelta >= DragScrollXDeltaIncr) {
+        DragScrollIsRunning := 1
+        ; "floor" to multiples of delta increment using integer division
+        DragScrollMouseMove := DragScrollXDelta //DragScrollXDeltaIncr *DragScrollXDeltaIncr
+        , DragScrollXDelta  -= DragScrollMouseMove
+        , DragScrollYDelta  := 0
+        , DragScrollQPCus(1)
+        , MBwmID := WM_MOUSEHWHEEL
+        SetTimer, DragScrollHandler, -1
+    }
+    ;Tooltip, % "2-X/Y: " DragScrollX " / " DragScrollY "   delta: " xdelta " / " ydelta "   Ds-X/Y-Delta: " DragScrollXDelta " / " DragScrollYDelta "   State: " DragScrollState
+    ;   . " DSMouseMove:" DragScrollMouseMove "  MBwmID:" MBwmID ; "`n" MButtonHistory
+    Return, 1
 }
 
 ; Scroll-Handler called by Hook as separate thread
@@ -3205,14 +3244,11 @@ SpecialCharactersLbl:
 ;~^!+F9::
 ;    return
 
-
 ; One (static) hotkey must always be enabled - otherwise, (dynamic) hotkeys won't work for some reason
 ; This hotkey Ctrl+Shift+Alt+F9 does nothing and is passed on, just makes sure dynamic mouse hotkeys don't disappear
-; Or remove the semicolons and use it for debugging
+; Or add a semicolon to the first return and use it for debugging
 ~^!+F9::
-    ;SendEvent {Blind}{F9 down}
-    ;KeyWait F9, U
-    ;SendEvent {Blind}{F9 up}
+    return
     actWin := WinExist("A")
     curWin := actWin
     ControlGetFocus, curCtrl
@@ -3225,11 +3261,10 @@ SpecialCharactersLbl:
     Clipboard := t2 " " t3 " " curCtrl
 
     _A_WorkingDir := A_WorkingDir
-    KeyHistory
     ListVars
     ListLines
+    KeyHistory
     return
-
 
 ;ProductName := "KDE Mover-Sizer"
 ;ProductVersion := 2.12
