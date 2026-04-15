@@ -24,8 +24,8 @@
 ;   Reason is that having the Mouse Cursor on a different screen than the Window Center causes inconsistent Win/AHK-internal DPI-scaling
 
 ;   Itstory:
-;   Apr   4, 2026:      Added: Special Feature Multi-Clipboard-Hotkey+Menu
-;   Mar  29, 2026:      Added: Option (.ini-only) to toggle Always-on-Top with Double-Alt + Hotkey (instead of WinClose). Set DoubleAltMButton_ToggleOnTop=1
+;   Apr   4, 2026:      Added: Special Feature: Multi-Clipboard-Hotkey+Menu
+;   Mar  29, 2026:      Added: Option to toggle Always-on-Top with Double-Alt + Hotkey (instead of WinClose).
 ;                       Added: QuickPosition ratios and snapping-grid sizes are now configurable through .ini file. Set any number of QuickPosition_EdgeSize_* entries as preferred
 ;                       Added: For Drag-Scrolling, set a minimum distance to determine scroll direction (horizontal or vertical) and start scrolling
 ;                       Added: Option to scale window relative to screen area when moving windows between monitors
@@ -140,7 +140,9 @@
 
 ;   NOTE: If your application wants the Alt key for hotkey modifiers, use Alt+Win+Key for that.
 ;   It's quite easy once you do it a few times, simply roll your thumb and finger on and off.
-
+;
+;   If you made all your way through here, you might want to have a look at https://github.com/m-ihmig/KDE_Mover-Sizer
+;
 ;***********************
 ; Global Constants
 ;***********************
@@ -359,7 +361,7 @@ ReadIniFile:
     IniReadWrite("SnapOnMoveEnabled",        "Settings", 1)          ; default: true
     IniReadWrite("BorderlessSnappingAndDPI", "Settings", DefaultBorderlessSnappingAndDPI)
     IniReadWrite("KeepWindowToMonitorRatio", "Settings", 0)          ; default: false:keep same amount of window content. true:resize to match relative monitor area
-    IniReadWrite("SnapOnResizeMagnetic",     "Settings", 0)          ; default: false
+    IniReadWrite("SnapOnResizeMagnetic",     "Settings", 1)          ; default: true
     IniReadWrite("DoRestoreOnResize",        "Settings", 1)          ; default: true
     IniReadWrite("Use3x3ResizeGrid",         "Settings", 0)          ; default: false (use 2x2 grid)
     IniReadWrite("DoubleAltShortcuts",       "Settings", 1)          ; default: true
@@ -622,7 +624,12 @@ PrepareMenu:
 
     ; Create Special menu
     ;
+    if DoubleAltMButton_ToggleAlwaysOnTop
+        s := "Close Window"
+    else
+        s := "Toggle Always-On-Top"
     Menu, MySpecialMenu, add, Toggle Window-Always-On-Top.., MenuToggleAlwaysOnTop
+    Menu, MySpecialMenu, add, % "Change Double-" . strname(ToggleMaximize_Hotkey) . "+" . strname(ToggleMaximize_Mouse) . " action to " . s, MenuChangeDoubleAltMButtonAction
     Menu, MySpecialMenu, add
 
     if AddOnEnable_SpecialCharacters
@@ -671,13 +678,14 @@ PrepareMenu:
     ;
     Menu, MyOptionsMenu, add, Snap on Move, MenuSnapOnMoveHandler
     Menu, MyOptionsMenu, add, Snap on Resize, MenuSnapOnSizeHandler
-    Menu, MyOptionsMenu, add, Keep Relative Size across Monitors, MenuKeepWindowToMonitorRatio
+    Menu, MyOptionsMenu, add, Borderless snapping, MenuBorderlessSnappingAndDPI
     Menu, MyOptionsMenu, add
     Menu, MyOptionsMenu, add, Magnetic Resizing, MenuSnapOnResizeMagnetic
     Menu, MyOptionsMenu, add, Resize restores Maximized Window, MenuDoRestoreOnResize
     Menu, MyOptionsMenu, add, Use 3x3 grid for Resize direction, MenuUse3x3ResizeGrid
     Menu, MyOptionsMenu, add
     Menu, MyOptionsMenu, add, Bring Windows to Front on dragging, MenuBringWindowToFront
+    Menu, MyOptionsMenu, add, Keep Window-to-Monitor Size ratio, MenuKeepWindowToMonitorRatio
     Menu, MyOptionsMenu, add, Show Window Contents while dragging, MenuShowWindowWhenDragging
     Menu, MyIgnoreMenu, add, Add Window to Ignore List.., MenuAddWindowToWindowIgnoreList
     Menu, MyIgnoreMenu, add, Remove Window from Ignore List.., MenuRemoveWindowFromWindowIgnoreList
@@ -752,8 +760,10 @@ PrepareMenu:
         Menu, MyOptionsMenu, Check, Snap on Move
     if SnapOnSizeEnabled
         Menu, MyOptionsMenu, Check, Snap on Resize
+    if BorderlessSnappingAndDPI
+        Menu, MyOptionsMenu, Check, Borderless snapping
     if KeepWindowToMonitorRatio
-        Menu, MyOptionsMenu, Check, Keep Relative Size across Monitors
+        Menu, MyOptionsMenu, Check, Keep Window-to-Monitor Size ratio
     if BringWindowToFront
         Menu, MyOptionsMenu, Check, Bring Windows to Front on dragging
     if ShowWindowWhenDragging
@@ -810,16 +820,20 @@ MenuSnapOnSizeHandler:
     if (SnapOnSizeEnabled = 0 AND SnapOnResizeMagnetic = 1)
         Gosub, MenuSnapOnResizeMagnetic
     return
-
-MenuKeepWindowToMonitorRatio:
-    Menu, MyOptionsMenu, ToggleCheck, Keep Relative Size across Monitors
-    KeepWindowToMonitorRatio := NOT KeepWindowToMonitorRatio
-    If KeepWindowToMonitorRatio
-        Traytip, Maintain Window-to-Monitor ratio, Move across monitors will resize to keep the same window-to-screen ratio,30,%TRAYICON_NOSOUND%
-    Else
-        Traytip, Maintain Window content, Move across monitors will resize to match different DPI settings and keep same amount of window content (Windows default),30,%TRAYICON_NOSOUND%
-
-    IniWrite, %KeepWindowToMonitorRatio%, KDE_Mover-Sizer.ini, Settings, KeepWindowToMonitorRatio
+    
+MenuBorderlessSnappingAndDPI:
+    if (BorderlessSnappingAndDPI = 0 && (SubStr(A_OSVersion,1,3) = "WIN" || A_OSVersion < "10.0.14393"))
+    {
+        MsgBox, % MSGBOX_EXCLAMATION, Windows version too old!, % "DPI-aware Borderless snapping is not supported for Windows 10 Builds earlier than 14393 (v1607)"
+        return
+    }
+    Menu, MyOptionsMenu, ToggleCheck, Borderless snapping
+    BorderlessSnappingAndDPI := NOT BorderlessSnappingAndDPI
+    If BorderlessSnappingAndDPI = 0
+        ScalePerMonitorAreaDPI := 0
+    IniWrite, %BorderlessSnappingAndDPI%, KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI
+    IniWrite, %ScalePerMonitorAreaDPI%, KDE_Mover-Sizer.ini, Settings, ScalePerMonitorAreaDPI
+    Reload
     return
 
 MenuDoubleAltShortcuts:
@@ -837,6 +851,17 @@ MenuBringWindowToFront:
     Else
         Traytip, Bring Window to Front disabled, Press %WindowToFront_Hotkey2% to bring window to foreground during Moving or Resizing,30,%TRAYICON_NOSOUND%
     IniWrite, %BringWindowToFront%, KDE_Mover-Sizer.ini, Settings, BringWindowToFront
+    return
+
+MenuKeepWindowToMonitorRatio:
+    Menu, MyOptionsMenu, ToggleCheck, Keep Window-to-Monitor Size ratio
+    KeepWindowToMonitorRatio := NOT KeepWindowToMonitorRatio
+    If KeepWindowToMonitorRatio
+        Traytip, Maintain Window-to-Monitor ratio, Move across monitors will resize to keep the same window-to-screen ratio,30,%TRAYICON_NOSOUND%
+    Else
+        Traytip, Maintain Window content, Move across monitors will resize to match different DPI settings and keep same amount of window content (Windows default),30,%TRAYICON_NOSOUND%
+
+    IniWrite, %KeepWindowToMonitorRatio%, KDE_Mover-Sizer.ini, Settings, KeepWindowToMonitorRatio
     return
 
 MenuShowWindowWhenDragging:
@@ -1090,6 +1115,12 @@ MenuToggleAlwaysOnTop:
     MouseGetPos, ,,curwin_id
     WinSet AlwaysOnTop, Toggle, ahk_id %curwin_id%
     TrayTip
+    return
+
+MenuChangeDoubleAltMButtonAction:
+    DoubleAltMButton_ToggleAlwaysOnTop := NOT DoubleAltMButton_ToggleAlwaysOnTop
+    IniWrite, %DoubleAltMButton_ToggleAlwaysOnTop%, KDE_Mover-Sizer.ini, Settings, DoubleAltMButton_ToggleAlwaysOnTop
+    Reload
     return
 
 MenuEnableSpecialCharacters:
@@ -2851,9 +2882,9 @@ QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2,
     else                                                                 ; is one of the outer squares
     {
         if ( OffX_l <= QuickPosNSize )
-            W2 := scrWidth * QuickPosSize[OffX_l +1]
+            W2 := Floor(scrWidth * QuickPosSize[OffX_l +1])
         else
-            W2 := scrWidth * (1 - QuickPosSize[M8mOffX_l +1])
+            W2 := Floor(scrWidth * (1 - QuickPosSize[M8mOffX_l +1]))
             
         if ( OffX < QuickPosNSizex2)
             X2 := scrLeft
@@ -2861,9 +2892,9 @@ QuickPositionWindowOnEdge(MouseX,MouseY, ByRef X2, ByRef Y2, ByRef W2, ByRef H2,
             X2 := scrLeft +  scrWidth - W2
 
         if ( OffY_l <= QuickPosNSize )
-            H2 := scrHeight * QuickPosSize[OffY_l +1]
+            H2 := Floor(scrHeight * QuickPosSize[OffY_l +1])
         else
-            H2 := scrHeight * (1 - QuickPosSize[M8mOffY_l +1])
+            H2 := Floor(scrHeight * (1 - QuickPosSize[M8mOffY_l +1]))
             
         if ( OffY < QuickPosNSizex2)
             Y2 := scrTop
