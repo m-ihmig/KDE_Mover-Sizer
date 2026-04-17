@@ -829,10 +829,7 @@ MenuBorderlessSnappingAndDPI:
     }
     Menu, MyOptionsMenu, ToggleCheck, Borderless snapping
     BorderlessSnappingAndDPI := NOT BorderlessSnappingAndDPI
-    If BorderlessSnappingAndDPI = 0
-        ScalePerMonitorAreaDPI := 0
     IniWrite, %BorderlessSnappingAndDPI%, KDE_Mover-Sizer.ini, Settings, BorderlessSnappingAndDPI
-    IniWrite, %ScalePerMonitorAreaDPI%, KDE_Mover-Sizer.ini, Settings, ScalePerMonitorAreaDPI
     Reload
     return
 
